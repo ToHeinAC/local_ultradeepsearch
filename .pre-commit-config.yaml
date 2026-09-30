@@ -1,0 +1,47 @@
+# The single quality gate. Runs on `git commit`, in the Claude Code Stop hook and in CI.
+# Manual run: uv run pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks # scans staged changes for secrets
+  - repo: local
+    # language "unsupported" (= "system"): tools come from the uv env pinned in uv.lock
+    hooks:
+      - id: no-env-files
+        name: forbid .env files (commit .env.example instead)
+        language: fail
+        entry: ".env files hold secrets and must not be committed"
+        files: '(^|/)\.env(\.(?!example$)[^/]+)?$'
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: unsupported
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: unsupported
+        types: [python]
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: unsupported
+        types: [python]
+        pass_filenames: false
+      - id: pytest
+        name: pytest (coverage >= 85%, suite <= 60 s)
+        entry: uv run pytest --cov -q
+        language: unsupported
+        types: [python]
+        pass_filenames: false

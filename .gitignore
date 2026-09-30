@@ -1,0 +1,28 @@
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Secrets: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Personal Claude Code settings (permissions, paths)
+.claude/settings.local.json
+.claude/settings.local.json.tmp.*
+
+# Runtime data
+/data/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
