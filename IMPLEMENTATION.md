@@ -18,7 +18,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | Phase | Milestone | Status | Verified by |
 |---|---|---|---|
 | 0 | Blueprint skeleton (no PRD milestone) | done | full gate green |
-| 1 | M1: Foundation and model infrastructure | planned | ollama adapter, role registry, doctor tests |
+| 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | planned | ollama adapter, role registry, doctor tests |
 | 2 | M2: Outbound gateway and retrieval adapters | planned | denylist/guard/ledger tests, egress AST test |
 | 3 | M3: Per-run source vault and fetch pipeline | planned | fixture-corpus, quote-verification, isolation tests |
 | 4 | M4: Phase 1 — clarification, uploads, brief | planned | brief-graph, hash-approval, zero-outbound tests |
