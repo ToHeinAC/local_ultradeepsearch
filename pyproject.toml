@@ -5,7 +5,12 @@ description = "Local two-phase deep research agent (HITL brief + Lite/Full pipel
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "ollama>=0.6.3",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "typer>=0.27.2",
+]
 
 [dependency-groups]
 dev = [
@@ -44,7 +49,8 @@ strict = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not live"]
+markers = ["live: needs real Ollama or network; excluded from the gate, run with -m live"]
 xfail_strict = true
 session_timeout = 60
 
