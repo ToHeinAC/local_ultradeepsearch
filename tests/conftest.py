@@ -1,10 +1,18 @@
 """Shared fixtures. The suite is offline: any socket connect raises, except for `live` tests."""
 
+import os
 import socket
 
 import pytest
 
 pytest_plugins = ["pytester"]
+
+
+@pytest.fixture(autouse=True)
+def _clean_udr_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer's UDR_* variables must never leak into a test."""
+    for name in [n for n in os.environ if n.startswith("UDR_")]:
+        monkeypatch.delenv(name)
 
 
 @pytest.fixture(autouse=True)
