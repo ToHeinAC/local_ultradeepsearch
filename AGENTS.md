@@ -144,4 +144,6 @@ A change is done when steps 2–6 are complete. Report the red and green results
 
 The project is Apache-2.0 ([LICENSE](LICENSE)). Dependencies and copied code must use a permissive
 license compatible with Apache-2.0 (MIT, BSD, ISC, PSF, Apache-2.0). Record copied code in
-THIRD_PARTY_NOTICES.md.
+THIRD_PARTY_NOTICES.md. Accepted by the owner (2026-10-01): the transitive, unmodified MPL
+dependencies `tld` (via trafilatura) and `certifi` (via httpx). Any further exception needs the
+owner's approval.

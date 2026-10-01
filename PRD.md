@@ -167,7 +167,7 @@ search queries.
   tests carry the `live` marker, stay outside the gate, run manually, and have their results
   recorded in IMPLEMENTATION.md.
 - **Config.** Env via pydantic-settings. Secrets only in `.env`: `TAVILY_API_KEY`,
-  `OPENALEX_MAILTO`, `UDR_GUI_API_KEY`. `.env.example` lists the keys.
+  `OPENALEX_MAILTO`, optional `OPENALEX_API_KEY`, `UDR_GUI_API_KEY`. `.env.example` lists the keys.
 - **Runtime data** lives in `data/` (gitignored):
   - `udr.sqlite`, `checkpoints.sqlite`, `calibration.json`, `denylist.txt`;
   - `runs/<run_id>/`, `briefs/`, `uploads/<session_id>/`, `templates/`, `backups/`.

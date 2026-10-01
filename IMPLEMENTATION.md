@@ -71,14 +71,10 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
      files. The full junk gates arrive with M3.
   5. §3.4 lists `tavily-python`; Tavily is called over REST with `httpx` instead, so status codes
      432/433 are handled directly.
-  6. §3.4 lists the secrets `TAVILY_API_KEY`, `OPENALEX_MAILTO`, `UDR_GUI_API_KEY`; the code adds an
-     optional `OPENALEX_API_KEY` (OpenAlex now gives free keys with ten times the budget).
-- Licences: two transitive dependencies are outside the AGENTS.md §5.5 list, both used unmodified:
-  `tld` (MPL-1.1 / GPL-2.0 / LGPL-2.1, via trafilatura → courlan) and `certifi` (MPL-2.0, via
-  httpx since M1). The owner decides whether MPL is acceptable.
 - The live outbound check (`tests/live/test_live_outbound.py`) has not been run: the run was
   declined in the session that built M2. Tavily is only exercised there with `TAVILY_API_KEY` in
-  this project's `.env`.
+  this project's `.env`. `OPENALEX_API_KEY` is supported but not yet configured (the owner adds
+  it later); OpenAlex works without it at a lower rate budget.
 - The calibration candidates stop at 32768 and that value fits on this host, so a larger window is
   untested. Raise the candidate list only if a PRD change asks for it.
 - A daemon started by `udr doctor` outlives the command by design (adopted next time). Until the
