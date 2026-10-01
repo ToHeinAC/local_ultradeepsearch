@@ -17,6 +17,16 @@ from app.adapters.ollama_instance import (
     subprocess_spawner,
 )
 from app.adapters.ollama_transport import LoadedModel, OllamaAdmin, OllamaTransport
+from app.adapters.outbound.ddgs_search import DdgsSearch
+from app.adapters.outbound.denylist import Denylist
+from app.adapters.outbound.gateway import OutboundGateway, Providers
+from app.adapters.outbound.http_get import HttpGetter
+from app.adapters.outbound.ledger import MonthLedger, RunLedger
+from app.adapters.outbound.log import OutboundLog
+from app.adapters.outbound.sanitizer import Sanitizer
+from app.adapters.outbound.scholarly import ArxivApi, CrossrefApi, OpenAlexApi
+from app.adapters.outbound.tavily import TavilyApi
+from app.adapters.outbound.types import HttpFactory, default_http
 from app.adapters.system_probe import Gpu
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
@@ -28,6 +38,8 @@ from app.llm.types import Endpoint, Role, RoleSpec, Transport
 
 CALIBRATION_FILE = "calibration.json"
 DENYLIST_FILE = "denylist.txt"
+TAVILY_LEDGER_FILE = "tavily-ledger.json"
+MIB = 1024 * 1024
 
 
 class HostProbe(InstanceProbe, Protocol):
@@ -115,4 +127,53 @@ def calibrate(rt: Runtime) -> Calibration | None:
         rt.admin,
         rt.events,
         timeout_s=rt.settings.llm_timeout_s,
+    )
+
+
+def build_providers(settings: Settings, *, http: HttpFactory = default_http) -> Providers:
+    """The outbound clients. Without `TAVILY_API_KEY`, web search uses ddgs from the start."""
+    timeout = settings.fetch_timeout_s
+    key = settings.tavily_api_key
+    openalex_key = settings.openalex_api_key
+    return Providers(
+        tavily=TavilyApi(key.get_secret_value(), http, timeout_s=timeout) if key else None,
+        ddgs=DdgsSearch(),
+        openalex=OpenAlexApi(
+            http,
+            mailto=settings.openalex_mailto,
+            api_key=openalex_key.get_secret_value() if openalex_key else None,
+            timeout_s=timeout,
+        ),
+        crossref=CrossrefApi(http, mailto=settings.openalex_mailto, timeout_s=timeout),
+        arxiv=ArxivApi(http, timeout_s=timeout),
+        http=HttpGetter(
+            http,
+            timeout_s=timeout,
+            max_html_bytes=int(settings.max_html_mb * MIB),
+            max_pdf_bytes=int(settings.max_pdf_mb * MIB),
+        ),
+    )
+
+
+def build_gateway(
+    rt: Runtime,
+    run_dir: Path,
+    *,
+    credit_cap: int,
+    confidential_context: str,
+    providers: Providers | None = None,
+) -> OutboundGateway:
+    """The outbound gateway of one run: its log in ``run_dir``, shared denylist and month ledger."""
+    settings = rt.settings
+    return OutboundGateway(
+        providers=providers or build_providers(settings),
+        denylist=Denylist.load(settings.data_dir / DENYLIST_FILE),
+        sanitizer=Sanitizer(rt.service, confidential_context),
+        log=OutboundLog(run_dir / "outbound.jsonl"),
+        run_ledger=RunLedger(credit_cap),
+        month_ledger=MonthLedger(
+            settings.data_dir / TAVILY_LEDGER_FILE, settings.tavily_monthly_limit
+        ),
+        events=rt.events,
+        internal_domains=settings.internal_domains,
     )

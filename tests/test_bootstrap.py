@@ -1,11 +1,18 @@
+import json
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
+import pytest
 from support import make_settings
 
 from app import bootstrap
 from app.adapters.ollama_instance import InstanceState
 from app.adapters.ollama_transport import OllamaAdmin
+from app.adapters.outbound.denylist import Denylist
+from app.adapters.outbound.errors import DenylistBlocked
+from app.adapters.outbound.gateway import PreparedQuery
+from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.system_probe import Gpu
 from app.calibration import Calibration, CtxMeasurement, save_calibration
 from app.config import Settings
@@ -155,3 +162,51 @@ def test_calibrate_measures_the_reason_model_on_the_own_endpoint(tmp_path: Path)
     assert result is not None
     assert (result.model, result.gpu, result.reason_num_ctx) == ("qwen3.8-27b:latest", 1, 32768)
     assert {call[0] for call in transport.calls} == {"http://127.0.0.1:11436"}
+
+
+# ---- M2: gateway composition ----------------------------------------------------------------
+
+
+def test_providers_follow_the_settings(tmp_path: Path) -> None:
+    without = bootstrap.build_providers(settings(tmp_path))
+    assert without.tavily is None
+    with_key = bootstrap.build_providers(settings(tmp_path, tavily_api_key="tvly-x"))
+    assert isinstance(with_key.tavily, TavilyApi)
+
+
+def test_the_gateway_is_wired_to_the_run_and_the_data_dir(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    Denylist(["Projekt Kranich"]).save(data / "denylist.txt")
+    seen: list[httpx.Request] = []
+
+    def net(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200, json={"results": [{"title": "T", "url": "https://h.org", "content": ""}]}
+        )
+
+    s = settings(data, tavily_api_key="tvly-x", openalex_mailto="me@example.org")
+    rt, _ = runtime(
+        data, script=[reply('{"sanitized_query": "reactor costs", "removed_terms": ["X"]}')]
+    )
+    rt = replace(rt, settings=s)
+
+    def http(timeout: float) -> httpx.Client:
+        return httpx.Client(transport=httpx.MockTransport(net), timeout=timeout)
+
+    gateway = bootstrap.build_gateway(
+        rt,
+        tmp_path / "runs" / "r1",
+        credit_cap=60,
+        confidential_context="Client X",
+        providers=bootstrap.build_providers(s, http=http),
+    )
+    prepared = gateway.prepare_query("X reactor costs", step="2.1")
+    assert prepared.sent == "reactor costs"
+    gateway.search_web(prepared, step="2")
+    line = json.loads((tmp_path / "runs" / "r1" / "outbound.jsonl").read_text(encoding="utf-8"))
+    assert (line["provider"], line["credits"]) == ("tavily_search", 1)
+    assert json.loads((data / "tavily-ledger.json").read_text(encoding="utf-8"))["credits"] == 1
+    with pytest.raises(DenylistBlocked):
+        gateway.search_web(PreparedQuery("x", "projekt kranich", ()), step="2")
+    assert len(seen) == 1
