@@ -76,7 +76,7 @@ search queries.
 | Role | Default model | Endpoint | Used for |
 |---|---|---|---|
 | `reason` | `qwen3.8-27b:latest` | own instance `127.0.0.1:11436`, pinned to one GPU | Phase-1 dialogue, tier recommendation, planning, next-action choice, analysis, drafting, synthesis, critics, patch hunks, cite verdicts, polish, query sanitizer |
-| `extract` | `LiquidAI/lfm2.5-1.2b-instruct:latest` | own instance | Cleaning fetched raw content, note summaries, claims, lead extraction |
+| `extract` | `LiquidAI/lfm2.5-1.2b-instruct:latest` | own instance | Note summaries, claims, lead extraction (never rewrites source text) |
 | `summarize` | `gemma4:e4b` (`gemma4:e2b` selectable per run) | shared daemon `127.0.0.1:11434` | Upload distillation, long-source map-reduce, intermediate summaries, utility scoring, evidence-digest grouping, readability recommendations |
 | `ocr` | `deepseek-ocr:3b` | shared daemon | Upload pages without a text layer |
 
@@ -222,6 +222,10 @@ search queries.
 - **AD9 — Inspectable artifacts.** `data/runs/<run_id>/` holds the original artifact names
   (§3.6), plus `run.json` (manifest), `events.jsonl`, `outbound.jsonl`, `search-plan.json` and
   `gate.json`.
+- **AD10 — Resumable everywhere.** A run that stops for any reason (crash, kill, reboot, cancel)
+  continues from its last checkpoint without repeating finished work or spending credits twice:
+  step boundaries via the LangGraph checkpointer, work inside a step persisted item by item and
+  idempotently. Every milestone proves it with a kill-and-resume test.
 
 ### 3.6 Pipeline steps and tiers (exact)
 
@@ -434,17 +438,18 @@ the report and exports stay downloadable, marked "nicht bestanden".
 
 ### M3 — Per-run source vault and fetch pipeline
 - **Deliverable:**
-  - **`app.store`:** SQLite tables for runs, sessions, notes, claims, events, API keys and template
-    metadata. FTS5 over notes (title 10, summary 5, body 1), filtered by `run_id`.
+  - **`app.store`:** SQLite tables for runs, notes, claims and rejected sources, with numbered
+    migrations (later milestones add their own). FTS5 over notes (title 10, summary 5, body 1),
+    filtered by `run_id`. Each source is also written to `data/runs/<id>/notes/<note_id>.md`.
   - **`app.pipeline.fetch`,** in order:
     1. Canonicalize the URL (drop tracking params and fragment, lowercase host); exact dedup.
     2. Fetch via the gateway.
     3. Junk gates: under 300 content chars; login wall (< 1000 chars plus markers); cookie wall
        (< 1500 chars plus markers); binary-garbage ratio > 5 %.
     4. MinHash near-dup (128 permutations, threshold 0.6) marks `derivative_of`.
-    5. `extract` produces cleaned markdown, a length-scaled summary, and claims in the original
-       schema: claim, stance, stance_target, evidence_type, scope_conditions, quoted_support,
-       numbers, entities, time_period, region, confidence.
+    5. `extract` produces a length-scaled summary and claims in the original schema: claim,
+       stance, stance_target, evidence_type, scope_conditions, quoted_support, numbers, entities,
+       time_period, region, confidence. The note body is the extractor's verbatim text.
     6. Verbatim check of every `quoted_support`.
     7. Sources over 5000 words (up to the profile cap) get a `summarize` map-reduce
        source-analysis note.
@@ -458,6 +463,9 @@ the report and exports stay downloadable, marked "nicht bestanden".
   4. The quality score is the original weighted sum without centrality (tier .35, utility .20,
      authority .25), renormalized, and is covered by a deterministic table test.
   5. A prompt-builder test shows fetched text appears only inside `<untrusted-source>` fences.
+  6. Kill and resume: after a crash at any point of ingestion (including SIGKILL), a fresh process
+     continues the run; no stored source is fetched again, no finished note is extracted again,
+     and the run's credit count survives.
 - **Edge cases:**
   - `extract` fails after retries: the note is kept without claims and flagged `extract_failed`.
   - Drop rate > 30 %: event `extract_quality_low` (R2).

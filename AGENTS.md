@@ -103,6 +103,8 @@ other files only when the task needs them, to keep context small.
   `tests/test_egress_guard.py`); `src/app/gui/` imports only the API client.
 - Configuration via environment variables. Secrets only in `.env`; `.env.example` lists the keys
   without values. Runtime data goes in `data/`. Both are gitignored.
+- Every pipeline step is resumable (PRD AD10): persist progress per item, idempotently, and add a
+  kill-and-resume test.
 - Plan and implement token-efficiently. The first implementation must be review-ready: a second
   tool (e.g. Codex) reviews every change against this file.
 
