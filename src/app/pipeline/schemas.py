@@ -32,3 +32,25 @@ class ChunkExtraction(BaseModel):
 
 class MergedSummary(BaseModel):
     summary: str
+
+
+Relevance = Literal["load-bearing", "useful", "tangential", "not-relevant"]
+
+
+class PartialAnalysis(BaseModel):
+    """What one part of a long source says (the map step, and merged parts in the reduce step)."""
+
+    key_points: list[str]
+    numbers: list[str] = []
+    quotes: list[str] = []
+
+
+class SourceAnalysis(BaseModel):
+    thesis: str
+    methodology: str = ""
+    key_findings: list[str]
+    load_bearing_citations: list[str] = []
+    caveats: str = ""
+    relevance_to_query: str
+    quotes: list[str] = []
+    relevance: Relevance
