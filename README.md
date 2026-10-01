@@ -9,13 +9,16 @@ depth, using only local Ollama models plus web search. It is a local port of
 
 ## Status
 
-Milestones M1 and M2 are done:
+Milestones M1 to M3 are done:
 - **M1:** configuration, the model-role registry, the LLM service, our own pinned Ollama instance,
   context calibration and `udr doctor`.
 - **M2:** the outbound gateway. Denylist, private-URL guard, query sanitizer, outbound log, Tavily
   with automatic DuckDuckGo fallback, OpenAlex/Crossref/arXiv, and HTML/PDF fetching.
+- **M3:** the per-run source vault. Fetched sources are filtered, deduplicated, summarised and
+  stored with word-for-word verified claims. A stopped run continues where it stopped
+  ([docs/vault.md](docs/vault.md)).
 
-The research pipeline, GUI and service API are not built yet. Phase status:
+The research graphs, GUI and service API are not built yet. Phase status:
 [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Quickstart

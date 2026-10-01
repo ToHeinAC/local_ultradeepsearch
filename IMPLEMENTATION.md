@@ -13,6 +13,7 @@ Rules: [AGENTS.md](AGENTS.md). Design: [docs/architecture.md](docs/architecture.
 | Live tests (real Ollama and services, not in the gate) | `uv run pytest -m live` (outbound only: `uv run pytest -m live tests/live/test_live_outbound.py`) |
 | Machine check | `uv run udr doctor` (`--json`; `--calibrate` measures the reason context) |
 | Denylist | `uv run udr denylist add <term>...`, `remove <term>...`, `list` |
+| Ingest sources of a run (library call; the CLI and graphs arrive later) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
 
 ## 2. Phase status
 
@@ -23,7 +24,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 0 | Blueprint skeleton (no PRD milestone) | done | full gate green |
 | 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | done | 209 offline tests, 99 % branch coverage; live: `udr doctor --calibrate` and `pytest -m live` (6 passed), see [docs/ollama-runtime.md](docs/ollama-runtime.md) |
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
-| 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | in progress | fixture-corpus, quote-verification, isolation, kill-and-resume tests |
+| 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief | planned | brief-graph, hash-approval, zero-outbound tests |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export | planned | light step-sequence, G1–G12 fixtures; live Lite run |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
@@ -38,18 +39,23 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 |---|---|
 | `src/app/config.py` | `Settings` (`UDR_*` env, `.env`) and `is_loopback_url`. Ollama URLs must be loopback. |
 | `src/app/llm/` | Role registry, typed requests, the `LLMService`, structured-output helpers, errors, `ScriptedTransport` fake. See [docs/llm-layer.md](docs/llm-layer.md). |
-| `src/app/prompts/` | Prompt strings as named constants: `llm.py` (repair, calibration probe), `outbound.py` (sanitizer). |
+| `src/app/prompts/` | Prompt strings as named constants: `llm.py` (repair, calibration probe), `outbound.py` (sanitizer), `untrusted.py` (fencing of fetched text), `notes.py` (extraction, summary merge, source analysis). |
 | `src/app/events.py` | `EventSink` protocol, thread-safe `JsonlEventSink`, `MemoryEventSink`. |
-| `src/app/artifacts.py` | Atomic `write_text`/`write_json` that strip `<think>`; `scrub=False` for byte-exact files. |
+| `src/app/artifacts.py` | Atomic, thread-safe `write_text`/`write_json` that strip `<think>`; `scrub=False` for byte-exact files. |
+| `src/app/text.py` | `normalize_for_match` and the verbatim-quote check `contains_quote` (also used by the ship gate later). |
 | `src/app/calibration.py` | Measures the largest `reason` context that fits VRAM; `calibration.json` I/O. |
 | `src/app/doctor.py` | Pure checks over a `DoctorSnapshot`; exit code and rendering. |
-| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run. |
+| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`. |
 | `src/app/cli.py` | `udr` command (`doctor`, `denylist`). Entry point `udr = app.cli:main`. |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
 | `src/app/adapters/system_probe.py` | `nvidia-smi`, free disk, binary lookup, model-store discovery. |
 | `src/app/adapters/outbound/` | The only egress: denylist, private-URL guard, sanitizer, outbound log, credit ledgers, throttle, Tavily / ddgs / OpenAlex / Crossref / arXiv clients, HTTP fetch and HTML/PDF extraction, and the run-scoped `OutboundGateway`. See [docs/outbound.md](docs/outbound.md). |
-| `tests/support.py` | `make_settings()` (`Settings` that ignore any developer `.env`) and `make_pdf()` (synthetic PDFs). |
+| `src/app/store/` | The run-scoped SQLite vault: migrations, notes, claims, rejections, FTS5 search, stats. See [docs/vault.md](docs/vault.md). |
+| `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
+| `config/` | `profiles.toml` (per-tier budgets) and `source_strategies.toml` (tier weights, host rules, domain sections). |
+| `tests/support.py` | `make_settings()` (`Settings` that ignore any developer `.env`), `make_pdf()` (synthetic PDFs) and `make_note()`. |
+| `tests/fixtures_corpus.py`, `tests/crash_child.py` | The 20-URL corpus, fake fetcher and fake model; the child process the SIGKILL test kills. |
 | `tests/conftest.py` | Autouse fixtures: block sockets (except `live` tests), scrub `UDR_*` env. |
 | `tests/live/` | Real-model checks, marked `live`, excluded from the gate. |
 | `tests/test_code_rules.py` | Enforces functions ≤ 50 lines in `src/`, `tests/`, `.claude/hooks/`. |
@@ -71,10 +77,18 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
      files. The full junk gates arrive with M3.
   5. §3.4 lists `tavily-python`; Tavily is called over REST with `httpx` instead, so status codes
      432/433 are handled directly.
+  6. M3 compares MinHash signatures all-pairs instead of through an LSH index, and `datasketch` is
+     pinned to one hash scheme. `Vault` is bound to one run id, and the near-duplicate index holds
+     originals only. These are implementation choices inside the PRD's "MinHash, threshold 0.6".
 - The live outbound check (`tests/live/test_live_outbound.py`) has not been run: the run was
   declined in the session that built M2. Tavily is only exercised there with `TAVILY_API_KEY` in
   this project's `.env`. `OPENALEX_API_KEY` is supported but not yet configured (the owner adds
   it later); OpenAlex works without it at a lower rate budget.
+- The M3 pipeline has not run against the real `extract` model: `claims_drop_rate` on real pages is
+  unmeasured. Above 0.30 is PRD risk R2 (propose `UDR_MODEL_EXTRACT` = a gemma model). The check
+  needs the network and our Ollama, so it waits for the owner's go-ahead.
+- Tavily's provider switch and an interrupted outbound log line are not fully durable across a
+  restart; see [docs/vault.md](docs/vault.md) (Resuming).
 - The calibration candidates stop at 32768 and that value fits on this host, so a larger window is
   untested. Raise the candidate list only if a PRD change asks for it.
 - A daemon started by `udr doctor` outlives the command by design (adopted next time). Until the

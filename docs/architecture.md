@@ -4,14 +4,15 @@
 
 | Layer | Where | Rule |
 |---|---|---|
-| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
+| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `text`, `store/`, `pipeline/`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
 | Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe`, `adapters/outbound/` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only; everything bound for the internet goes through `adapters/outbound/` (enforced by `tests/test_egress_guard.py`). |
 | Composition root | `bootstrap` | The one place that picks real adapters and wires them into a `Runtime`. |
 | Entry points | `cli` (`udr`) | Thin: build the runtime, call pure logic, print. |
 
 Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
 LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
-[llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md).
+[llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md),
+[vault.md](vault.md).
 
 ## Quality gate flow
 
@@ -33,6 +34,11 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
   send against the denylist and every URL (and redirect hop) against the private-URL guard, and
   logs every attempt. Callers can prepare queries however they like; nothing reaches a provider
   unchecked ([outbound.md](outbound.md)).
+- **Resumable everywhere (PRD AD10).** Progress is stored item by item, and a stage change and the
+  rows it depends on are one transaction. A stopped run therefore restarts from its last committed
+  stage: nothing stored is fetched again, finished model work is not redone, credits are not
+  spent twice. Code that is interrupted must never be swallowed (`BaseException` is not caught),
+  and each pipeline step has a kill-and-resume test ([vault.md](vault.md)).
 - **Confidentiality fails closed, availability fails open.** A sanitizer error blocks the query.
   An exhausted or invalid Tavily account switches the run to ddgs instead of failing it.
 - **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared
@@ -40,7 +46,8 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
   an error.
 - **Fakes at every seam.** `ScriptedTransport`, a fake instance probe and spawner, and an injectable
   clock make the 30-second startup timeout and the retry backoff testable instantly. Mutation checks
-  (deliberately breaking the code) confirmed the tests fail when the behavior is wrong.
+  (deliberately breaking the code) confirm the tests fail when the behavior is wrong; the M3 ones
+  found a real race, a thread-unsafe file write and an untested transaction boundary.
 - **Python 3.11 is the floor.** CI runs 3.11 and 3.14, so no syntax newer than 3.11;
   `tests/test_py311_syntax.py` enforces it.
 - **One gate definition.** The pre-commit config is the only list of checks. The Stop hook and CI
