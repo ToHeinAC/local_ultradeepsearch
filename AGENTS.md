@@ -93,9 +93,13 @@ other files only when the task needs them, to keep context small.
   `uv add <pkg>` (dev tools: `uv add --dev <pkg>`), never `pip install`. Commit `uv.lock`.
 - Layout: code in `src/app/`, tests in `tests/`.
 - Functions ≤ 50 lines, cyclomatic complexity ≤ 10.
-- Type hints everywhere; `src/` passes pyright strict.
+- Type hints everywhere; `src/` passes pyright strict. CI also runs Python 3.11, so no syntax newer
+  than 3.11 (no `def f[T]`, no `type X = ...`).
 - I/O (network, files, databases) lives in dedicated adapter modules. Core logic stays pure and is
   tested without I/O.
+- Boundaries ([PRD.md](PRD.md) §3.4): prompt strings are named constants in `src/app/prompts/`;
+  LangGraph is imported only in `src/app/graphs/`; network and model calls only in
+  `src/app/adapters/`; `src/app/gui/` imports only the API client.
 - Configuration via environment variables. Secrets only in `.env`; `.env.example` lists the keys
   without values. Runtime data goes in `data/`. Both are gitignored.
 - Plan and implement token-efficiently. The first implementation must be review-ready: a second
@@ -116,7 +120,8 @@ A change is done when steps 2–6 are complete. Report the red and green results
 ### 5.4 Testing and quality gate
 
 - pytest; all tests live in `tests/` and are written in Python.
-- The suite is offline: `tests/conftest.py` blocks sockets. Use synthetic fixtures.
+- The suite is offline: `tests/conftest.py` blocks sockets. Use synthetic fixtures. Tests that need
+  real services are marked `live`, stay out of the gate and run with `uv run pytest -m live`.
 - Red-green rule: a test counts only if it was seen failing against missing or wrong code, and
   passing against correct code. A repo-wide guard test also needs a test that feeds its detector
   a violating input.

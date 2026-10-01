@@ -4,9 +4,14 @@
 
 | Layer | Where | Rule |
 |---|---|---|
-| Core logic | `src/app/*.py` | Pure functions, fully typed, no I/O. Unit-tested directly. |
-| Adapters | `src/app/<adapter>.py` (add when needed) | The only place for network, file, or database I/O. |
-| Entry points | CLI / app module (add when needed) | Wire adapters to core logic; keep them thin. |
+| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
+| Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only. |
+| Composition root | `bootstrap` | The one place that picks real adapters and wires them into a `Runtime`. |
+| Entry points | `cli` (`udr`) | Thin: build the runtime, call pure logic, print. |
+
+Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
+LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
+[llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md).
 
 ## Quality gate flow
 
@@ -21,6 +26,17 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
 
 ## Design decisions
 
+- **Everything that talks to a model goes through `LLMService`.** Callers state a role and a
+  Pydantic schema; retries, repair, truncation handling and telemetry live in one place
+  ([llm-layer.md](llm-layer.md)).
+- **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared
+  daemon and a warning event is written, instead of the run failing. The doctor still reports it as
+  an error.
+- **Fakes at every seam.** `ScriptedTransport`, a fake instance probe and spawner, and an injectable
+  clock make the 30-second startup timeout and the retry backoff testable instantly. Mutation checks
+  (deliberately breaking the code) confirmed the tests fail when the behavior is wrong.
+- **Python 3.11 is the floor.** CI runs 3.11 and 3.14, so no syntax newer than 3.11;
+  `tests/test_py311_syntax.py` enforces it.
 - **One gate definition.** The pre-commit config is the only list of checks. The Stop hook and CI
   run `pre-commit run --all-files`, so the three can't drift apart.
 - **Tool versions come from `uv.lock`.** The local pre-commit hooks use `language: unsupported`

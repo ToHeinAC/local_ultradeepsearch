@@ -5,6 +5,25 @@ Source of truth: [PRD.md](../../PRD.md), specifically §4 M1, §3.1 (models), §
 [IMPLEMENTATION.md](../../IMPLEMENTATION.md). If this plan and the PRD disagree, the PRD wins.
 Raise the conflict with the owner instead of choosing silently.
 
+## Outcome
+
+M1 is done. The code is authoritative: interfaces below are the original design, and where they
+differ, the module docs ([llm-layer.md](../llm-layer.md), [ollama-runtime.md](../ollama-runtime.md))
+describe what exists. Deviations from this plan:
+
+1. The `udr` console script was registered in step 10, once `app.cli` existed.
+2. `DoctorSnapshot` carries `gpus` and `own_loaded_vram_bytes` instead of
+   `foreign_gpu_processes`. The sharing check compares used VRAM with what our own instance
+   reports loaded, because our daemon and the summarizer's are both named `ollama`.
+3. The doctor emits one `model:<role>` check per role instead of a single `models` check.
+4. `think` is always sent explicitly. A live probe showed that omitting it makes `gemma4:e2b`
+   spend its whole budget on thinking.
+5. The model store is the candidate with the most manifests, not the first that exists.
+6. `--calibrate` unloads the model afterwards and refuses to run unless the own instance is up.
+7. Additions: `tests/support.py` (`make_settings`), `tests/test_py311_syntax.py`, `remove_think`
+   split out of `strip_think`, `LiveProbe` and `HostProbe` in the composition root.
+8. The live tests skip the OCR role (an image model); M4 covers it with a real page image.
+
 ## 1. Scope
 
 **In scope for M1:**

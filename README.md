@@ -1,31 +1,47 @@
-# claude-dev-schema
+# local-ultradeepsearch
 
-A GitHub template for Python projects built with Claude Code and reviewed by a second tool such as
-Codex. The rules are short, and every rule that can be checked is checked by a single quality gate.
+A local, two-phase deep research agent. Phase 1 clarifies the question with you and ends with a
+brief you approve word for word. Phase 2 researches and writes a cited report, in a Lite or Full
+depth, using only local Ollama models plus web search. It is a local port of
+[ultradeep-researcher](https://github.com/ToHeinAC/ultradeep-researcher), built from the
+[claude-dev-schema](https://github.com/ToHeinAC/claude-dev-schema) template. What and why:
+[PRD.md](PRD.md).
 
-## Use it
+## Status
 
-1. On GitHub, click **Use this template**, then clone your new repository.
-2. `uv sync && uv run pre-commit install`
-3. `uv run pre-commit run --all-files` should pass.
-4. Set `name` and `description` in `pyproject.toml`. Replace `src/app/core.py` and
-   `tests/test_core.py` with your code.
-5. Write `PRD.md` (see [Skills and commands](#skills-and-commands)) and add its milestones to
-   the phase table in `IMPLEMENTATION.md`.
-6. Start `claude` in the repo. It loads `CLAUDE.md`, which imports `AGENTS.md` and `IMPLEMENTATION.md`.
+Milestone M1 is done: configuration, the model-role registry, the LLM service (structured output,
+retries, telemetry), our own pinned Ollama instance, context calibration and `udr doctor`. The
+research pipeline, GUI and service API are not built yet. Phase status:
+[IMPLEMENTATION.md](IMPLEMENTATION.md).
 
-Requirements: [uv](https://docs.astral.sh/uv/) and git. uv installs Python itself.
+## Quickstart
+
+Requirements: [uv](https://docs.astral.sh/uv/), git, Ollama with an NVIDIA GPU, and these models
+pulled: `qwen3.8-27b:latest`, `LiquidAI/lfm2.5-1.2b-instruct:latest`, `gemma4:e4b`,
+`deepseek-ocr:3b`. uv installs Python itself.
+
+```bash
+uv sync && uv run pre-commit install   # once per clone
+cp .env.example .env                   # optional; every setting has a default
+uv run udr doctor --calibrate          # checks the machine, measures the reason context
+uv run pytest                          # offline tests
+uv run pytest -m live                  # tests against the real models
+```
+
+`udr doctor` starts a second Ollama on `127.0.0.1:11436`, pinned to one GPU, if none is running
+there. How that works, the settings and how to stop it:
+[docs/ollama-runtime.md](docs/ollama-runtime.md).
 
 ## Layout
 
 ```
+PRD.md               what and why (the contract)
+IMPLEMENTATION.md    current state: phase table, module map, run/verify
 AGENTS.md            rules for every AI coding tool (Claude Code via CLAUDE.md, Codex natively)
 CLAUDE.md            imports AGENTS.md and IMPLEMENTATION.md
-PRD.md               what and why (template)
-IMPLEMENTATION.md    current state: phase table, module map, run/verify
-docs/                deep docs per component; architecture.md
-src/app/             code
-tests/               pytest suite (offline) and the repo rule checks
+docs/                architecture, component docs, per-milestone plans in docs/plans/
+src/app/             code; module map in IMPLEMENTATION.md
+tests/               pytest suite (offline), live/ model checks, and the repo rule checks
 .claude/settings.json      shared permissions and hooks
 .claude/hooks/             hook scripts (tested in tests/)
 .claude/commands/          /commit-git, /documentation-update
