@@ -2,10 +2,11 @@
 
 import ipaddress
 from pathlib import Path
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def is_loopback_url(url: str) -> bool:
@@ -26,7 +27,9 @@ def is_loopback_url(url: str) -> bool:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="UDR_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="UDR_", env_file=".env", extra="ignore", populate_by_name=True
+    )
 
     data_dir: Path = Path("data")
 
@@ -49,12 +52,35 @@ class Settings(BaseSettings):
     llm_timeout_s: float = Field(default=900.0, gt=0)
     min_free_disk_gb: float = Field(default=20.0, ge=0)
 
+    # Outbound (PRD §3.2, §3.3). Secrets keep their plain names, as listed in the PRD.
+    tavily_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("TAVILY_API_KEY", "tavily_api_key")
+    )
+    openalex_mailto: str | None = Field(
+        default=None, validation_alias=AliasChoices("OPENALEX_MAILTO", "openalex_mailto")
+    )
+    openalex_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("OPENALEX_API_KEY", "openalex_api_key")
+    )
+    tavily_monthly_limit: int = Field(default=1000, ge=0)
+    internal_domains: Annotated[tuple[str, ...], NoDecode] = ()
+    fetch_timeout_s: float = Field(default=30.0, gt=0)
+    max_html_mb: float = Field(default=10.0, gt=0)
+    max_pdf_mb: float = Field(default=25.0, gt=0)
+
     @field_validator("shared_ollama_url")
     @classmethod
     def _loopback_only(cls, url: str) -> str:
         if not is_loopback_url(url):
             raise ValueError(f"Ollama URL must be a loopback http(s) URL, got {url!r}")
         return url
+
+    @field_validator("internal_domains", mode="before")
+    @classmethod
+    def _split_domains(cls, value: Any) -> tuple[str, ...]:
+        items = value.split(",") if isinstance(value, str) else list(value or ())
+        cleaned = (str(item).strip().strip(".").lower() for item in items)
+        return tuple(d for d in cleaned if d)
 
     @property
     def own_ollama_url(self) -> str:

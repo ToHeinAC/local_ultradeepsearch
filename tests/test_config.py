@@ -98,3 +98,61 @@ def test_rejects_non_loopback(url: str) -> None:
 def test_rejects_out_of_range_values(field: str, value: object) -> None:
     with pytest.raises(ValidationError):
         make(**{field: value})
+
+
+# ---- M2 outbound settings ---------------------------------------------------------------------
+
+
+def test_outbound_defaults() -> None:
+    s = make()
+    assert s.tavily_api_key is None
+    assert s.openalex_mailto is None
+    assert s.openalex_api_key is None
+    assert s.tavily_monthly_limit == 1000
+    assert s.internal_domains == ()
+    assert s.fetch_timeout_s == 30
+    assert (s.max_html_mb, s.max_pdf_mb) == (10, 25)
+
+
+def test_secrets_use_their_plain_env_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-secret")
+    monkeypatch.setenv("OPENALEX_MAILTO", "me@example.org")
+    monkeypatch.setenv("OPENALEX_API_KEY", "oa-secret")
+    s = make()
+    assert s.tavily_api_key is not None
+    assert s.tavily_api_key.get_secret_value() == "tvly-secret"
+    assert s.openalex_api_key is not None
+    assert s.openalex_api_key.get_secret_value() == "oa-secret"
+    assert s.openalex_mailto == "me@example.org"
+    assert "tvly-secret" not in repr(s)
+
+
+def test_secrets_can_be_passed_by_field_name() -> None:
+    s = make(tavily_api_key="tvly-x")
+    assert s.tavily_api_key is not None
+    assert s.tavily_api_key.get_secret_value() == "tvly-x"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("brenk.local,corp.example.com", ("brenk.local", "corp.example.com")),
+        (" Brenk.Local , .corp.example. ,, ", ("brenk.local", "corp.example")),
+        ("", ()),
+    ],
+)
+def test_internal_domains_are_comma_separated_and_normalised(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: tuple[str, ...]
+) -> None:
+    monkeypatch.setenv("UDR_INTERNAL_DOMAINS", raw)
+    assert make().internal_domains == expected
+
+
+def test_internal_domains_accept_a_list_in_code() -> None:
+    assert make(internal_domains=["A.example"]).internal_domains == ("a.example",)
+
+
+def test_conftest_scrubs_provider_secrets() -> None:
+    import os
+
+    assert not {"TAVILY_API_KEY", "OPENALEX_MAILTO", "OPENALEX_API_KEY"} & set(os.environ)

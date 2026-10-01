@@ -10,8 +10,9 @@ pytest_plugins = ["pytester"]
 
 @pytest.fixture(autouse=True)
 def _clean_udr_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A developer's UDR_* variables must never leak into a test."""
-    for name in [n for n in os.environ if n.startswith("UDR_")]:
+    """A developer's UDR_* variables and provider secrets must never leak into a test."""
+    secrets = {"TAVILY_API_KEY", "OPENALEX_MAILTO", "OPENALEX_API_KEY"}
+    for name in [n for n in os.environ if n.startswith("UDR_") or n in secrets]:
         monkeypatch.delenv(name)
 
 
