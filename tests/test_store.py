@@ -248,6 +248,56 @@ def test_save_extraction_is_all_or_nothing(db: Path) -> None:
     assert vault.save_extraction(note.note_id, "retry", [claim("ok")], dropped=0, failed=False)
 
 
+def break_stage_updates(db: Path, stage: str) -> None:
+    """Make every update that moves a note to ``stage`` fail, as a crash after the claims would."""
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TRIGGER fail_stage BEFORE UPDATE OF stage ON notes "
+        f"WHEN NEW.stage = '{stage}' BEGIN SELECT RAISE(ABORT, 'simulated failure'); END"
+    )
+    conn.commit()
+    conn.close()
+
+
+def repair_stage_updates(db: Path) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TRIGGER fail_stage")
+    conn.commit()
+    conn.close()
+
+
+def test_a_failure_after_the_claims_still_stores_no_claims(db: Path) -> None:
+    """Claims and the stage move are one transaction: else a resume would extract twice."""
+    vault = open_vault(db)
+    note, _ = vault.add_source_note(source(1))
+    break_stage_updates(db, "extracted")
+    with pytest.raises(sqlite3.DatabaseError, match="simulated failure"):
+        vault.save_extraction(note.note_id, "summary", [claim("one")], dropped=0, failed=False)
+    stored = vault.get_note(note.note_id)
+    assert stored is not None
+    assert stored.stage == "fetched"
+    assert vault.claims() == []  # not even the claims survived
+    repair_stage_updates(db)
+    assert vault.save_extraction(note.note_id, "retry", [claim("one")], dropped=0, failed=False)
+    assert len(vault.claims()) == 1  # and a retry does not double them
+
+
+def test_a_failure_while_completing_a_source_stores_no_analysis_note(db: Path) -> None:
+    vault = open_vault(db)
+    note, _ = vault.add_source_note(source(1))
+    vault.save_extraction(note.note_id, "s", [], dropped=0, failed=False)
+    break_stage_updates(db, "complete")
+    with pytest.raises(sqlite3.DatabaseError, match="simulated failure"):
+        vault.add_analysis_note(note.note_id, "Analysis", "body")
+    assert vault.notes(kind="source_analysis") == []
+    stored = vault.get_note(note.note_id)
+    assert stored is not None
+    assert stored.stage == "extracted"
+    repair_stage_updates(db)
+    created = vault.add_analysis_note(note.note_id, "Analysis", "body")
+    assert [n.note_id for n in vault.notes(kind="source_analysis")] == [created.note_id]
+
+
 def test_save_extraction_for_an_unknown_note_raises(db: Path) -> None:
     with pytest.raises(KeyError):
         open_vault(db).save_extraction("n9999", "x", [], dropped=0, failed=False)
