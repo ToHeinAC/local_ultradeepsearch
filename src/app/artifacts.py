@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,7 +24,7 @@ def scrub_think(value: Any) -> Any:
 
 def _atomic_write(path: Path, data: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")  # per thread
     try:
         tmp.write_text(data, encoding="utf-8", newline="")
         os.replace(tmp, path)

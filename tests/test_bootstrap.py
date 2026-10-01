@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fixtures_corpus import FOCUS, FakeFetcher
 from support import make_settings
 
 from app import bootstrap
@@ -11,7 +12,7 @@ from app.adapters.ollama_instance import InstanceState
 from app.adapters.ollama_transport import OllamaAdmin
 from app.adapters.outbound.denylist import Denylist
 from app.adapters.outbound.errors import DenylistBlocked
-from app.adapters.outbound.gateway import PreparedQuery
+from app.adapters.outbound.gateway import OutboundGateway, PreparedQuery
 from app.adapters.outbound.log import OutboundLog, OutboundRecord
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.system_probe import Gpu
@@ -225,3 +226,52 @@ def test_a_resumed_run_keeps_the_credits_it_already_spent(tmp_path: Path) -> Non
         rt, tmp_path / "runs" / "r2", credit_cap=60, confidential_context="x"
     )
     assert fresh.credits_used == 0
+
+
+# ---- run directory, vault and pipeline composition (M3) --------------------------------------
+
+
+def test_a_run_lives_in_its_own_directory_under_data_runs(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    assert bootstrap.run_dir(s, "2026-10-01-abc") == s.data_dir / "runs" / "2026-10-01-abc"
+
+
+@pytest.mark.parametrize("bad", ["", "..", "../x", "a/b", "a\\b", ".hidden", "x" * 65, "a b"])
+def test_a_run_id_cannot_escape_the_runs_directory(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(ValueError, match="run id"):
+        bootstrap.run_dir(settings(tmp_path), bad)
+
+
+def test_the_vault_database_is_shared_and_runs_are_isolated(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    first = bootstrap.open_vault(s, "run-a", label="first")
+    second = bootstrap.open_vault(s, "run-b")
+    assert (s.data_dir / bootstrap.VAULT_FILE).exists()
+    first.reject("https://x.org/", "https://x.org", "too_short")
+    assert first.rejections() != []
+    assert second.rejections() == []
+    # reopening the same run in a "new process" sees what was stored
+    assert bootstrap.open_vault(s, "run-a").rejections() != []
+
+
+def test_build_pipeline_wires_the_profile_the_vault_and_a_fetcher(tmp_path: Path) -> None:
+    rt, _ = runtime(tmp_path)
+    fetcher = FakeFetcher({})
+    pipeline = bootstrap.build_pipeline(rt, "run-a", tier="light", focus=FOCUS, fetcher=fetcher)
+    assert pipeline.resume() == 0
+    assert (rt.settings.data_dir / bootstrap.VAULT_FILE).exists()
+
+
+def test_build_pipeline_uses_the_gateway_with_the_profiles_credit_cap_by_default(
+    tmp_path: Path,
+) -> None:
+    rt, _ = runtime(tmp_path)
+    pipeline = bootstrap.build_pipeline(rt, "run-a", tier="full", focus=FOCUS)
+    assert isinstance(pipeline.fetcher, OutboundGateway)
+    assert pipeline.fetcher.credit_cap == 300  # config/profiles.toml [full]
+
+
+def test_an_unknown_tier_is_an_error(tmp_path: Path) -> None:
+    rt, _ = runtime(tmp_path)
+    with pytest.raises(ValueError, match="tier"):
+        bootstrap.build_pipeline(rt, "run-a", tier="turbo", focus=FOCUS)

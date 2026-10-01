@@ -1,4 +1,5 @@
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,27 @@ def test_failure_during_replace_keeps_the_old_file_and_cleans_the_temp(
     monkeypatch.undo()
     assert target.read_text(encoding="utf-8") == "old"
     assert [p.name for p in tmp_path.iterdir()] == ["keep.md"]
+
+
+def test_threads_writing_the_same_file_never_collide(tmp_path: Path) -> None:
+    """The temp name must be unique per write: a process id alone is shared by every thread."""
+    target = tmp_path / "shared.md"
+    barrier = threading.Barrier(8)
+    errors: list[BaseException] = []
+
+    def write(index: int) -> None:
+        try:
+            barrier.wait()
+            for round_ in range(30):
+                write_text(target, f"writer {index} round {round_}")
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert target.read_text(encoding="utf-8").startswith("writer ")
+    assert [p.name for p in tmp_path.iterdir()] == ["shared.md"]  # and no temp file is left behind

@@ -1,6 +1,7 @@
 """Composition root: turns settings into a wired runtime. The only place that picks adapters."""
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,10 +36,19 @@ from app.events import EventSink
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
 from app.llm.types import Endpoint, Role, RoleSpec, Transport
+from app.pipeline.analysis import SourceAnalyzer
+from app.pipeline.extraction import Focus, NoteExtractor
+from app.pipeline.fetch import Fetcher, FetchPipeline
+from app.pipeline.profiles import load_profile
+from app.pipeline.strategies import load_strategies
+from app.store.vault import Vault
 
 CALIBRATION_FILE = "calibration.json"
 DENYLIST_FILE = "denylist.txt"
 TAVILY_LEDGER_FILE = "tavily-ledger.json"
+VAULT_FILE = "udr.sqlite"
+RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+TIERS = ("light", "full")
 MIB = 1024 * 1024
 
 
@@ -177,4 +187,55 @@ def build_gateway(
         ),
         events=rt.events,
         internal_domains=settings.internal_domains,
+    )
+
+
+def run_dir(settings: Settings, run_id: str) -> Path:
+    """``data/runs/<run_id>``: the inspectable files of one run (the id is one safe path part)."""
+    if not RUN_ID.fullmatch(run_id):
+        raise ValueError(f"invalid run id {run_id!r}: use letters, digits, '.', '_' and '-' only")
+    return settings.data_dir / "runs" / run_id
+
+
+def open_vault(settings: Settings, run_id: str, *, label: str = "") -> Vault:
+    """The run's view of the shared database ``data/udr.sqlite``; reopening it resumes the run."""
+    run_dir(settings, run_id)  # validates the id before anything is created
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    return Vault(settings.data_dir / VAULT_FILE, run_id, label=label)
+
+
+def build_pipeline(
+    rt: Runtime,
+    run_id: str,
+    *,
+    tier: str,
+    focus: Focus,
+    confidential_context: str = "",
+    fetcher: Fetcher | None = None,
+) -> FetchPipeline:
+    """The ingestion pipeline of one run. Call ``resume()`` before new work (PRD AD10).
+
+    Without ``fetcher`` the run's outbound gateway is built, capped at the tier's credit limit.
+    """
+    if tier not in TIERS:
+        raise ValueError(f"unknown tier {tier!r}: expected one of {', '.join(TIERS)}")
+    settings = rt.settings
+    profile = load_profile(tier, settings.config_dir)
+    directory = run_dir(settings, run_id)
+    return FetchPipeline(
+        vault=open_vault(settings, run_id),
+        fetcher=fetcher
+        or build_gateway(
+            rt,
+            directory,
+            credit_cap=profile.credit_cap,
+            confidential_context=confidential_context,
+        ),
+        extractor=NoteExtractor(rt.service, rt.events),
+        analyzer=SourceAnalyzer(rt.service, rt.events),
+        strategies=load_strategies(settings.config_dir),
+        profile=profile,
+        focus=focus,
+        run_dir=directory,
+        events=rt.events,
     )

@@ -176,6 +176,9 @@ class Vault:
         normalized = normalize_doi(doi)
         return self._one("kind = 'source' AND doi = ?", (normalized,)) if normalized else None
 
+    def find_analysis(self, source_note_id: str) -> Note | None:
+        return self._one("kind = 'source_analysis' AND analysis_of = ?", (source_note_id,))
+
     def notes(self, *, kind: Kind | None = None, stage: Stage | None = None) -> list[Note]:
         where, params = ["run_id = ?"], [self.run_id]
         for column, value in (("kind", kind), ("stage", stage)):
@@ -313,7 +316,7 @@ class Vault:
             source = self.get_note(source_note_id)
             if source is None:
                 raise KeyError(source_note_id)
-            result = self._one("kind = 'source_analysis' AND analysis_of = ?", (source_note_id,))
+            result = self.find_analysis(source_note_id)
             if result is None:
                 if source.stage != "extracted":
                     raise ValueError(

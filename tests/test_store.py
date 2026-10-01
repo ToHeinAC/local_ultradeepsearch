@@ -308,6 +308,18 @@ def test_an_analysis_note_completes_its_source(db: Path) -> None:
     assert len(vault.notes(kind="source_analysis")) == 1
 
 
+def test_the_analysis_of_a_source_can_be_looked_up(db: Path) -> None:
+    vault = open_vault(db)
+    note, _ = vault.add_source_note(source(1))
+    assert vault.find_analysis(note.note_id) is None
+    vault.save_extraction(note.note_id, "s", [], dropped=0, failed=False)
+    created = vault.add_analysis_note(note.note_id, "Analysis", "body")
+    found = vault.find_analysis(note.note_id)
+    assert found is not None
+    assert found.note_id == created.note_id
+    assert vault.find_analysis("n9999") is None
+
+
 def test_an_analysis_note_needs_an_extracted_source(db: Path) -> None:
     vault = open_vault(db)
     note, _ = vault.add_source_note(source(1))
