@@ -5,3 +5,5 @@ REPAIR_PROMPT = (
     "Reply again with ONLY a single JSON object that fits the requested schema. "
     "No prose, no code fences, no explanation."
 )
+
+CALIBRATION_PROBE_PROMPT = "Reply with the single word: ok"
