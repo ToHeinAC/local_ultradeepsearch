@@ -32,22 +32,22 @@ class Settings(BaseSettings):
 
     shared_ollama_url: str = "http://127.0.0.1:11434"
     own_ollama_enabled: bool = True
-    own_ollama_port: int = Field(11436, ge=1, le=65535)
-    own_ollama_gpu: int = Field(1, ge=0)
-    own_ollama_startup_timeout_s: float = Field(30.0, gt=0)
+    own_ollama_port: int = Field(default=11436, ge=1, le=65535)
+    own_ollama_gpu: int = Field(default=1, ge=0)
+    own_ollama_startup_timeout_s: float = Field(default=30.0, gt=0)
     ollama_binary: str = "ollama"
     ollama_models_dir: Path | None = None
 
-    model_reason: str = Field("qwen3.8-27b:latest", min_length=1)
-    model_extract: str = Field("LiquidAI/lfm2.5-1.2b-instruct:latest", min_length=1)
-    model_summarize: str = Field("gemma4:e4b", min_length=1)
-    model_ocr: str = Field("deepseek-ocr:3b", min_length=1)
-    num_ctx_extract: int = Field(8192, ge=1024)
-    num_ctx_summarize: int = Field(16384, ge=1024)
-    num_ctx_ocr: int = Field(8192, ge=1024)
+    model_reason: str = Field(default="qwen3.8-27b:latest", min_length=1)
+    model_extract: str = Field(default="LiquidAI/lfm2.5-1.2b-instruct:latest", min_length=1)
+    model_summarize: str = Field(default="gemma4:e4b", min_length=1)
+    model_ocr: str = Field(default="deepseek-ocr:3b", min_length=1)
+    num_ctx_extract: int = Field(default=8192, ge=1024)
+    num_ctx_summarize: int = Field(default=16384, ge=1024)
+    num_ctx_ocr: int = Field(default=8192, ge=1024)
 
-    llm_timeout_s: float = Field(900.0, gt=0)
-    min_free_disk_gb: float = Field(20.0, ge=0)
+    llm_timeout_s: float = Field(default=900.0, gt=0)
+    min_free_disk_gb: float = Field(default=20.0, ge=0)
 
     @field_validator("shared_ollama_url")
     @classmethod

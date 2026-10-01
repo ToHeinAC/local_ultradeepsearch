@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
+from support import make_settings
 
 from app.adapters.ollama_instance import (
     InstanceState,
@@ -15,17 +16,13 @@ from app.adapters.ollama_instance import (
     subprocess_spawner,
 )
 from app.adapters.ollama_transport import OllamaAdmin
-from app.config import Settings
+from app.adapters.system_probe import Gpu
 from app.events import MemoryEventSink
 from app.llm.types import Endpoint
 
 OWN = "http://127.0.0.1:11436"
 SHARED = "http://127.0.0.1:11434"
 MODELS = Path("/usr/share/ollama/.ollama/models")
-
-
-def make_settings(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)  # pyright: ignore[reportCallIssue]
 
 
 @dataclass
@@ -293,3 +290,15 @@ def test_live_probe_reports_unreachable_as_not_serving() -> None:
     probe = LiveProbe(admin, run=lambda argv: None)
     assert probe.serving(OWN) is False
     assert probe.gpu_indices() is None
+
+
+def test_live_probe_answers_the_host_questions_the_doctor_asks(tmp_path: Path) -> None:
+    admin = OllamaAdmin(
+        lambda t: httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200)), timeout=t
+        )
+    )
+    probe = LiveProbe(admin, run=lambda argv: "0, RTX 4090, 24564, 83\n")
+    assert probe.gpus() == [Gpu(0, "RTX 4090", 24564, 83)]
+    assert probe.free_disk_bytes(tmp_path) > 0
+    assert LiveProbe(admin, run=lambda argv: None).gpus() is None

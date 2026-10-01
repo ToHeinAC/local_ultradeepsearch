@@ -1,6 +1,7 @@
 import dataclasses
 
 import pytest
+from support import make_settings
 
 from app.config import Settings
 from app.llm.errors import (
@@ -16,7 +17,7 @@ from app.llm.types import Endpoint, Role
 
 
 def make(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)  # pyright: ignore[reportCallIssue]
+    return make_settings(**overrides)
 
 
 def test_defaults_match_the_prd_table() -> None:

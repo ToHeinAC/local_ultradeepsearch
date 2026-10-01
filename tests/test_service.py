@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 import pytest
 from pydantic import BaseModel
+from support import make_settings
 
-from app.config import Settings
 from app.events import MemoryEventSink
 from app.llm.errors import (
     LLMModelMissingError,
@@ -44,7 +44,7 @@ def rig(script: list[ChatReply | Exception]) -> Rig:
     transport = ScriptedTransport(script)
     events = MemoryEventSink()
     sleeps: list[float] = []
-    registry = build_registry(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
+    registry = build_registry(make_settings())
     service = LLMService(registry, URLS, transport, events, timeout_s=5, sleep=sleeps.append)
     return Rig(service, transport, events, sleeps)
 
@@ -229,7 +229,7 @@ class SlowTransport:
 @pytest.mark.parametrize(("role", "limit"), [(Role.REASON, 1), (Role.EXTRACT, 2)])
 def test_role_concurrency_is_bounded(role: Role, limit: int) -> None:
     transport = SlowTransport()
-    registry = build_registry(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
+    registry = build_registry(make_settings())
     service = LLMService(registry, URLS, transport, MemoryEventSink(), timeout_s=5)
     threads = [threading.Thread(target=service.text, args=(role, ASK)) for _ in range(6)]
     for t in threads:

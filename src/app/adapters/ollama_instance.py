@@ -18,7 +18,15 @@ from pathlib import Path
 from typing import Protocol
 
 from app.adapters.ollama_transport import OllamaAdmin
-from app.adapters.system_probe import Runner, find_binary, find_models_dir, list_gpus, run_command
+from app.adapters.system_probe import (
+    Gpu,
+    Runner,
+    find_binary,
+    find_models_dir,
+    free_disk_bytes,
+    list_gpus,
+    run_command,
+)
 from app.config import Settings
 from app.events import EventSink
 from app.llm.types import Endpoint
@@ -200,9 +208,15 @@ class LiveProbe:
     def serving(self, base_url: str) -> bool:
         return self._admin.version(base_url) is not None
 
+    def gpus(self) -> list[Gpu] | None:
+        return list_gpus(self._run)
+
     def gpu_indices(self) -> list[int] | None:
-        gpus = list_gpus(self._run)
+        gpus = self.gpus()
         return None if gpus is None else [g.index for g in gpus]
+
+    def free_disk_bytes(self, path: Path) -> int:
+        return free_disk_bytes(path)
 
     def find_binary(self, name: str) -> str | None:
         return find_binary(name)

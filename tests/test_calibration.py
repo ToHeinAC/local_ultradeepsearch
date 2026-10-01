@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from support import make_settings
 
 from app.adapters.ollama_transport import LoadedModel
 from app.calibration import (
@@ -32,7 +33,7 @@ NOW = datetime(2026, 10, 1, 9, 30, tzinfo=UTC)
 
 
 def settings(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)  # pyright: ignore[reportCallIssue]
+    return make_settings(**overrides)
 
 
 def loaded(size_vram_gib: float, size_gib: float = 20) -> list[LoadedModel]:

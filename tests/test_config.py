@@ -2,12 +2,13 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from support import make_settings
 
 from app.config import Settings, is_loopback_url
 
 
 def make(**overrides: object) -> Settings:
-    return Settings(_env_file=None, **overrides)  # pyright: ignore[reportCallIssue]
+    return make_settings(**overrides)
 
 
 def test_defaults_match_the_prd() -> None:
@@ -43,7 +44,7 @@ def test_env_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_env_file_is_read(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text("UDR_MODEL_SUMMARIZE=gemma4:e2b\nUNRELATED=1\n")
-    s = Settings(_env_file=env)  # pyright: ignore[reportCallIssue]
+    s = Settings(_env_file=env)  # pyright: ignore[reportCallIssue]  # synthesized __init__
     assert s.model_summarize == "gemma4:e2b"
 
 
