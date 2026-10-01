@@ -2,7 +2,7 @@
 
 import threading
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from app.llm.types import ChatReply, ChatRequest
 
@@ -41,3 +41,26 @@ class ScriptedTransport:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+class CallbackTransport:
+    """Answers each request with ``handler(request)``: a `ChatReply` is returned, an `Exception`
+    is raised. Use it when the answer depends on the request (which chunk, which model).
+
+    `calls` holds the requests and `urls` the base URLs they were sent to, in call order.
+    """
+
+    def __init__(self, handler: Callable[[ChatRequest], ChatReply | Exception]) -> None:
+        self._handler = handler
+        self._lock = threading.Lock()
+        self.calls: list[ChatRequest] = []
+        self.urls: list[str] = []
+
+    def chat(self, base_url: str, request: ChatRequest, timeout_s: float) -> ChatReply:
+        with self._lock:
+            self.calls.append(request)
+            self.urls.append(base_url)
+        outcome = self._handler(request)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome

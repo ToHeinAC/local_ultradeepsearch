@@ -1,7 +1,7 @@
 # ruff: noqa: RUF001  # this file tests look-alike Unicode quotes and dashes on purpose
 import pytest
 
-from app.text import contains_quote, normalize_for_match, quote_in_text
+from app.text import contains_quote, normalize_for_match, quote_in_text, strip_wrapping_quotes
 
 
 @pytest.mark.parametrize(
@@ -83,3 +83,22 @@ def test_every_occurrence_is_considered_for_the_boundary_rule() -> None:
     # first occurrence is inside "reactors", the second is a whole word
     assert quote_in_text("actors", "reactors and actors")
     assert not quote_in_text("actors", "only reactors")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('"Quoted text."', "Quoted text."),
+        ("\u201eQuoted text.\u201c", "Quoted text."),
+        ("\u00abQuoted text.\u00bb", "Quoted text."),
+        ("\u2018Quoted text.\u2019", "Quoted text."),
+        ('  "Padded"  ', "Padded"),
+        ('"\u201cNested\u201d"', "Nested"),
+        ("Plain text.", "Plain text."),
+        ('He said "yes" and left.', 'He said "yes" and left.'),  # inner quotes stay
+        ('"Unbalanced', '"Unbalanced'),
+        ("", ""),
+    ],
+)
+def test_strip_wrapping_quotes(raw: str, expected: str) -> None:
+    assert strip_wrapping_quotes(raw) == expected

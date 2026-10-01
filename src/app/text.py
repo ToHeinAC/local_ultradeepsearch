@@ -24,6 +24,30 @@ def normalize_for_match(text: str) -> str:
     return _SPACE.sub(" ", folded).strip().casefold()
 
 
+# (opening, closing) pairs a model may wrap a quote in, spelled as code points
+_WRAPPERS = (
+    (0x0022, 0x0022),
+    (0x0027, 0x0027),
+    (0x201C, 0x201D),
+    (0x201E, 0x201C),
+    (0x00AB, 0x00BB),
+    (0x00BB, 0x00AB),
+    (0x2018, 0x2019),
+    (0x201A, 0x2018),
+    (0x2039, 0x203A),
+)
+
+
+def strip_wrapping_quotes(text: str) -> str:
+    """``text`` without surrounding whitespace and without quotation marks that wrap all of it."""
+    result = text.strip()
+    while len(result) >= 2 and any(
+        result[0] == chr(open_) and result[-1] == chr(close) for open_, close in _WRAPPERS
+    ):
+        result = result[1:-1].strip()
+    return result
+
+
 def _bare(quote: str) -> str:
     """The normalised quote without wrapping quotation marks the model may have added."""
     text = normalize_for_match(quote)
