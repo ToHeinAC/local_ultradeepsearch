@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,27 @@ class OutboundLog:
     @property
     def path(self) -> Path:
         return self._path
+
+    def total_credits(self) -> int:
+        """Credits recorded so far, so a resumed run keeps its spending. A line cut off by a crash
+        and anything that is not a record with an integer `credits` is ignored."""
+        try:
+            lines = self._path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return 0
+        total = 0
+        for line in lines:
+            try:
+                record: object = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            credits = (
+                cast("dict[str, object]", record).get("credits")
+                if isinstance(record, dict)
+                else None
+            )
+            total += credits if isinstance(credits, int) else 0
+        return total
 
     def write(self, record: OutboundRecord) -> None:
         line = {

@@ -165,12 +165,13 @@ def build_gateway(
 ) -> OutboundGateway:
     """The outbound gateway of one run: its log in ``run_dir``, shared denylist and month ledger."""
     settings = rt.settings
+    log = OutboundLog(run_dir / "outbound.jsonl")
     return OutboundGateway(
         providers=providers or build_providers(settings),
         denylist=Denylist.load(settings.data_dir / DENYLIST_FILE),
         sanitizer=Sanitizer(rt.service, confidential_context),
-        log=OutboundLog(run_dir / "outbound.jsonl"),
-        run_ledger=RunLedger(credit_cap),
+        log=log,
+        run_ledger=RunLedger(credit_cap, used=log.total_credits()),
         month_ledger=MonthLedger(
             settings.data_dir / TAVILY_LEDGER_FILE, settings.tavily_monthly_limit
         ),

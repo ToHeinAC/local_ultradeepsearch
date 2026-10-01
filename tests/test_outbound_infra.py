@@ -221,3 +221,43 @@ def test_throttle_host_matching_is_case_insensitive() -> None:
     throttle.wait("https://Example.COM/a")
     throttle.wait("https://example.com/b")
     assert clock.slept == [1.0]
+
+
+# ---- resumability: credits survive a restart (M3 AC6) ----------------------------------------
+
+
+def test_total_credits_sums_an_existing_log(tmp_path: Path) -> None:
+    log = OutboundLog(tmp_path / "outbound.jsonl", now=lambda: OCT)
+    assert log.total_credits() == 0  # no file yet
+    log.write(OutboundRecord(step="2", provider="tavily_search", status="200", credits=1))
+    log.write(OutboundRecord(step="2", provider="openalex", status="200"))
+    log.write(OutboundRecord(step="2", provider="tavily_extract", status="200", credits=2))
+    assert OutboundLog(tmp_path / "outbound.jsonl").total_credits() == 3  # a new process sees it
+
+
+def test_total_credits_ignores_a_line_cut_off_by_a_crash(tmp_path: Path) -> None:
+    path = tmp_path / "outbound.jsonl"
+    OutboundLog(path, now=lambda: OCT).write(
+        OutboundRecord(step="2", provider="tavily_search", status="200", credits=4)
+    )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write('{"ts": "2026-10-01T12:00:00+00:00", "credits": 9, "pro')  # killed mid-write
+    assert OutboundLog(path).total_credits() == 4
+
+
+def test_total_credits_skips_unreadable_and_foreign_lines(tmp_path: Path) -> None:
+    path = tmp_path / "outbound.jsonl"
+    path.write_text(
+        '\n[1, 2]\n{"credits": "many"}\n{"credits": 2}\nnot json\n{"credits": 3}\n',
+        encoding="utf-8",
+    )
+    assert OutboundLog(path).total_credits() == 5
+
+
+def test_a_run_ledger_can_start_with_credits_already_spent() -> None:
+    ledger = RunLedger(cap=10, used=8)
+    assert ledger.used == 8
+    assert ledger.can_afford(2)
+    assert not ledger.can_afford(3)
+    ledger.charge(2)
+    assert ledger.used == 10

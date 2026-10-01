@@ -142,6 +142,11 @@ class OutboundGateway:
         self._switched = False
         self._lock = threading.Lock()
 
+    @property
+    def credits_used(self) -> int:
+        """Tavily credits this run has spent, including those spent before a restart."""
+        return self._run.used
+
     # ---- bookkeeping ----------------------------------------------------------------------
 
     def _log(

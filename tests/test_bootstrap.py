@@ -12,6 +12,7 @@ from app.adapters.ollama_transport import OllamaAdmin
 from app.adapters.outbound.denylist import Denylist
 from app.adapters.outbound.errors import DenylistBlocked
 from app.adapters.outbound.gateway import PreparedQuery
+from app.adapters.outbound.log import OutboundLog, OutboundRecord
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.system_probe import Gpu
 from app.calibration import Calibration, CtxMeasurement, save_calibration
@@ -210,3 +211,17 @@ def test_the_gateway_is_wired_to_the_run_and_the_data_dir(tmp_path: Path) -> Non
     with pytest.raises(DenylistBlocked):
         gateway.search_web(PreparedQuery("x", "projekt kranich", ()), step="2")
     assert len(seen) == 1
+
+
+def test_a_resumed_run_keeps_the_credits_it_already_spent(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "r1"
+    log = OutboundLog(run_dir / "outbound.jsonl")
+    log.write(OutboundRecord(step="2", provider="tavily_search", status="200", credits=5))
+    log.write(OutboundRecord(step="2", provider="tavily_extract", status="200", credits=3))
+    rt, _ = runtime(tmp_path)
+    resumed = bootstrap.build_gateway(rt, run_dir, credit_cap=60, confidential_context="x")
+    assert resumed.credits_used == 8
+    fresh = bootstrap.build_gateway(
+        rt, tmp_path / "runs" / "r2", credit_cap=60, confidential_context="x"
+    )
+    assert fresh.credits_used == 0

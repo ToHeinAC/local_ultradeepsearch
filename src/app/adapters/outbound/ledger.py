@@ -27,9 +27,9 @@ def extract_credits(successful_urls: int, depth: Depth = "basic") -> int:
 class RunLedger:
     """Credits spent by one run, against the cap of its profile (light 60, full 300)."""
 
-    def __init__(self, cap: int) -> None:
+    def __init__(self, cap: int, used: int = 0) -> None:
         self.cap = cap
-        self.used = 0
+        self.used = used  # a resumed run starts with what it has already spent
         self._lock = threading.Lock()
 
     def can_afford(self, credits: int) -> bool:
