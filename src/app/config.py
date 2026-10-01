@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+REPO_ROOT = Path(__file__).resolve().parents[2]  # src/app/config.py -> repository root
+
 
 def is_loopback_url(url: str) -> bool:
     """True for http(s) URLs whose host is `localhost` or a loopback IP (PRD §3.1)."""
@@ -32,6 +34,7 @@ class Settings(BaseSettings):
     )
 
     data_dir: Path = Path("data")
+    config_dir: Path = REPO_ROOT / "config"
 
     shared_ollama_url: str = "http://127.0.0.1:11434"
     own_ollama_enabled: bool = True

@@ -1,0 +1,12 @@
+# Numeric budgets per tier (PRD §3.8). Keys are added here as milestones start to use them.
+# Every number a prompt or a limit depends on lives here, never in code (PRD AD3).
+
+[light]
+credit_cap = 60             # Tavily credits per run
+source_analysis_cap = 6     # long-source analyses per run
+long_source_words = 5000    # a source this long gets a summarize-role map-reduce analysis
+
+[full]
+credit_cap = 300
+source_analysis_cap = 6
+long_source_words = 5000

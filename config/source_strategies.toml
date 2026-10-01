@@ -1,0 +1,110 @@
+# Source tiers and per-domain search hints (PRD §3.3).
+# A host matches a rule when it equals the suffix or ends with ".<suffix>"; the longest matching
+# suffix wins. Authoritative hosts of every domain count as ground_truth.
+
+[tier_weights]
+ground_truth = 1.0
+institutional = 0.85
+practitioner = 0.7
+commentary = 0.4
+unknown = 0.6
+
+# ---- generic host rules ---------------------------------------------------------------------
+
+[[host_rules]]
+suffix = "gov"
+tier = "ground_truth"
+[[host_rules]]
+suffix = "europa.eu"
+tier = "ground_truth"
+[[host_rules]]
+suffix = "bund.de"
+tier = "ground_truth"
+[[host_rules]]
+suffix = "admin.ch"
+tier = "ground_truth"
+
+[[host_rules]]
+suffix = "edu"
+tier = "institutional"
+[[host_rules]]
+suffix = "ac.uk"
+tier = "institutional"
+[[host_rules]]
+suffix = "arxiv.org"
+tier = "institutional"
+[[host_rules]]
+suffix = "doi.org"
+tier = "institutional"
+[[host_rules]]
+suffix = "wikipedia.org"
+tier = "institutional"
+[[host_rules]]
+suffix = "nature.com"
+tier = "institutional"
+[[host_rules]]
+suffix = "springer.com"
+tier = "institutional"
+[[host_rules]]
+suffix = "sciencedirect.com"
+tier = "institutional"
+[[host_rules]]
+suffix = "oecd.org"
+tier = "institutional"
+[[host_rules]]
+suffix = "who.int"
+tier = "institutional"
+[[host_rules]]
+suffix = "worldbank.org"
+tier = "institutional"
+
+[[host_rules]]
+suffix = "github.com"
+tier = "practitioner"
+[[host_rules]]
+suffix = "stackoverflow.com"
+tier = "practitioner"
+[[host_rules]]
+suffix = "stackexchange.com"
+tier = "practitioner"
+
+[[host_rules]]
+suffix = "medium.com"
+tier = "commentary"
+[[host_rules]]
+suffix = "substack.com"
+tier = "commentary"
+[[host_rules]]
+suffix = "blogspot.com"
+tier = "commentary"
+[[host_rules]]
+suffix = "wordpress.com"
+tier = "commentary"
+
+# ---- the four domains -----------------------------------------------------------------------
+# authoritative: ground_truth hosts; preferred: good secondary sources; include_domains: Tavily
+# hints for primary-source queries; scholarly_first: query OpenAlex/Crossref/arXiv before the web.
+
+[domains.tech_standards]
+scholarly_first = true
+authoritative = ["iso.org", "iec.ch", "din.de", "vde.com", "etsi.org", "ieee.org", "nist.gov", "iaea.org", "bsi.bund.de"]
+preferred = ["springer.com", "sciencedirect.com", "ieee.org"]
+include_domains = ["iso.org", "din.de", "iec.ch", "iaea.org", "nist.gov", "ieee.org"]
+
+[domains.regulation_de_eu]
+scholarly_first = false
+authoritative = ["gesetze-im-internet.de", "eur-lex.europa.eu", "bundesgesetzblatt.de", "bmuv.bund.de", "bfs.de", "curia.europa.eu", "dejure.org"]
+preferred = ["juris.de", "beck-online.beck.de", "bundestag.de"]
+include_domains = ["gesetze-im-internet.de", "eur-lex.europa.eu", "bund.de", "europa.eu", "bundestag.de"]
+
+[domains.science_medicine]
+scholarly_first = true
+authoritative = ["who.int", "ema.europa.eu", "fda.gov", "nih.gov", "ncbi.nlm.nih.gov", "cochranelibrary.com", "rki.de"]
+preferred = ["nature.com", "thelancet.com", "bmj.com", "springer.com"]
+include_domains = ["pubmed.ncbi.nlm.nih.gov", "who.int", "nih.gov", "cochranelibrary.com", "nature.com"]
+
+[domains.business_markets]
+scholarly_first = false
+authoritative = ["sec.gov", "bundesanzeiger.de", "destatis.de", "ecb.europa.eu", "bundesbank.de", "eurostat.ec.europa.eu", "imf.org"]
+preferred = ["reuters.com", "ft.com", "oecd.org", "worldbank.org"]
+include_domains = ["sec.gov", "bundesanzeiger.de", "destatis.de", "ecb.europa.eu", "eurostat.ec.europa.eu", "imf.org"]
