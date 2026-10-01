@@ -24,12 +24,16 @@ class StructuredParseError(Exception):
     """The model output is not valid JSON for the schema. The message is fed back to the model."""
 
 
-def strip_think(text: str) -> str:
+def remove_think(text: str) -> str:
     """Remove `<think>` blocks, an unclosed trailing one, and a lone leading `</think>`."""
     text = _THINK_BLOCK.sub("", text)
     text = _THINK_ORPHAN_CLOSE.sub("", text, count=1)
-    text = _THINK_UNCLOSED.sub("", text)
-    return text.strip()
+    return _THINK_UNCLOSED.sub("", text)
+
+
+def strip_think(text: str) -> str:
+    """`remove_think` plus surrounding whitespace removed."""
+    return remove_think(text).strip()
 
 
 def _describe(exc: ValidationError) -> str:
