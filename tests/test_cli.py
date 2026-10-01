@@ -153,3 +153,39 @@ def test_main_runs_the_typer_app(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "app", lambda: called.append("ran"))
     cli.main()
     assert called == ["ran"]
+
+
+# ---- udr denylist ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("UDR_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(bootstrap, "load_settings", lambda: settings(tmp_path))
+    return tmp_path
+
+
+def test_denylist_add_list_remove(data_dir: Path) -> None:
+    assert runner.invoke(cli.app, ["denylist", "list"]).stdout == ""
+    added = runner.invoke(cli.app, ["denylist", "add", "Müller-Werke", "Projekt Kranich"])
+    assert added.exit_code == 0
+    assert "added: Müller-Werke" in added.output
+    again = runner.invoke(cli.app, ["denylist", "add", "MUELLER WERKE"])
+    assert again.exit_code == 0
+    assert "already covered" in again.output
+    listed = runner.invoke(cli.app, ["denylist", "list"])
+    assert listed.stdout.splitlines() == ["Müller-Werke", "Projekt Kranich"]
+    removed = runner.invoke(cli.app, ["denylist", "remove", "projekt kranich", "nope"])
+    assert removed.exit_code == 1  # one term was not on the list
+    assert "removed: projekt kranich" in removed.output
+    assert "not found: nope" in removed.output
+    assert (data_dir / "denylist.txt").read_text(encoding="utf-8").splitlines()[1:] == [
+        "Müller-Werke"
+    ]
+
+
+def test_denylist_rejects_terms_without_letters(data_dir: Path) -> None:
+    result = runner.invoke(cli.app, ["denylist", "add", "--", "---"])
+    assert result.exit_code == 2
+    assert "letters or digits" in result.output
+    assert not (data_dir / "denylist.txt").exists()

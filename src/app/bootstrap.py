@@ -27,6 +27,7 @@ from app.llm.service import LLMService
 from app.llm.types import Endpoint, Role, RoleSpec, Transport
 
 CALIBRATION_FILE = "calibration.json"
+DENYLIST_FILE = "denylist.txt"
 
 
 class HostProbe(InstanceProbe, Protocol):
