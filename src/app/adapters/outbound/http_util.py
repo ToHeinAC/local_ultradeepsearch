@@ -46,6 +46,11 @@ def raise_for_status(
     raise ProviderError(provider, message, status)
 
 
+def network_error(provider: str, exc: httpx.HTTPError) -> TransientProviderError:
+    kind = "timeout" if isinstance(exc, httpx.TimeoutException) else "network"
+    return TransientProviderError(provider, f"{type(exc).__name__}: {exc}", kind=kind)
+
+
 def send(
     http: HttpFactory,
     timeout_s: float,
@@ -63,7 +68,7 @@ def send(
         with http(timeout_s) as client:
             response = client.request(method, url, params=params, json=json, headers=headers)
     except httpx.HTTPError as exc:
-        raise TransientProviderError(provider, f"{type(exc).__name__}: {exc}") from exc
+        raise network_error(provider, exc) from exc
     raise_for_status(provider, response, plan_limit_codes)
     return response
 

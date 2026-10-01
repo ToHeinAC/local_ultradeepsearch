@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from app.adapters.outbound.errors import TransientProviderError
+from app.adapters.outbound.http_util import network_error
 from app.adapters.outbound.types import HttpFactory, RawResponse, default_http
 
 
@@ -66,5 +66,5 @@ class HttpGetter:
                     return RawResponse(url, response.status_code, found, b"", too_large=True)
                 body, too_large = self._read(response, cap)
         except httpx.HTTPError as exc:
-            raise TransientProviderError("http_get", f"{type(exc).__name__}: {exc}") from exc
+            raise network_error("http_get", exc) from exc
         return RawResponse(url, response.status_code, found, body, too_large)

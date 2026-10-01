@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from ddgs import DDGS  # pyright: ignore[reportUnknownVariableType]  # partially typed
-from ddgs.exceptions import DDGSException
+from ddgs.exceptions import DDGSException, TimeoutException
 
 from app.adapters.outbound.errors import TransientProviderError
 from app.adapters.outbound.types import SearchHit
@@ -33,7 +33,10 @@ class DdgsSearch:
         except DDGSException as exc:  # also covers its rate-limit and timeout subclasses
             if str(exc) == NO_RESULTS:
                 return []
-            raise TransientProviderError(PROVIDER, f"{type(exc).__name__}: {exc}") from exc
+            kind = "timeout" if isinstance(exc, TimeoutException) else "transient"
+            raise TransientProviderError(
+                PROVIDER, f"{type(exc).__name__}: {exc}", kind=kind
+            ) from exc
         return [
             SearchHit(str(r.get("title") or ""), str(r["href"]), str(r.get("body") or ""), PROVIDER)
             for r in rows

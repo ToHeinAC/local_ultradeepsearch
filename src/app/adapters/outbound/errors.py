@@ -30,6 +30,12 @@ class ProviderError(Exception):
 class TransientProviderError(ProviderError):
     """Timeout, connection failure, 5xx or rate limiting: worth retrying."""
 
+    def __init__(
+        self, provider: str, message: str, status: int | None = None, kind: str = "transient"
+    ) -> None:
+        super().__init__(provider, message, status)
+        self.kind = kind  # "timeout", "network" or "transient"; shown in the outbound log
+
 
 class PlanLimitError(ProviderError):
     """Tavily HTTP 432/433: the plan or pay-as-you-go limit is exhausted."""
