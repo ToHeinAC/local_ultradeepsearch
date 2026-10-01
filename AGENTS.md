@@ -98,8 +98,9 @@ other files only when the task needs them, to keep context small.
 - I/O (network, files, databases) lives in dedicated adapter modules. Core logic stays pure and is
   tested without I/O.
 - Boundaries ([PRD.md](PRD.md) §3.4): prompt strings are named constants in `src/app/prompts/`;
-  LangGraph is imported only in `src/app/graphs/`; network and model calls only in
-  `src/app/adapters/`; `src/app/gui/` imports only the API client.
+  LangGraph is imported only in `src/app/graphs/`; model calls only in `src/app/adapters/`;
+  anything bound for the internet only through `src/app/adapters/outbound/` (enforced by
+  `tests/test_egress_guard.py`); `src/app/gui/` imports only the API client.
 - Configuration via environment variables. Secrets only in `.env`; `.env.example` lists the keys
   without values. Runtime data goes in `data/`. Both are gitignored.
 - Plan and implement token-efficiently. The first implementation must be review-ready: a second

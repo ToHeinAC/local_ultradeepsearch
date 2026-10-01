@@ -4,6 +4,24 @@ Source of truth: [PRD.md](../../PRD.md) §4 M2, §3.2 (confidentiality), §3.3 (
 Rules: [AGENTS.md](../../AGENTS.md). Status: [IMPLEMENTATION.md](../../IMPLEMENTATION.md). If this
 plan and the PRD disagree, the PRD wins. Raise the conflict instead of choosing.
 
+## Outcome
+
+M2 is done for every PRD acceptance criterion (offline tests). The live check in §8 has not run
+yet. The code is authoritative; see [outbound.md](../outbound.md). Deviations from this plan:
+
+1. The "providers" module is split into `tavily.py`, `ddgs_search.py`, `scholarly.py` and
+   `http_get.py`, plus the shared `http_util.py` and `types.py`.
+2. `TransientProviderError` carries a `kind` (`timeout`, `network`, `transient`), so the log shows
+   `error:<kind>`.
+3. Every guard refusal is the fetch reason `blocked_private`; the guard's own reason is in the log
+   as `blocked:<reason>`.
+4. `search_scholarly` turns any provider error into `SearchUnavailable`. A Tavily outage diverts
+   only that query to ddgs, without switching the run.
+5. A sanitizer error raises `OutboundBlocked("sanitizer_failed")` (fail closed).
+6. For `tavily_extract`, the log's `url` is the page sent to Tavily.
+7. Guard additions: built-in special-use suffixes (`local`, `internal`, `lan`, `home.arpa`, …), and
+   IPv4-mapped addresses unwrapped for consistent behaviour across Python versions.
+
 ## 1. Scope
 
 **In scope:**

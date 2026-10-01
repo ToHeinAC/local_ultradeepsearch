@@ -5,13 +5,13 @@
 | Layer | Where | Rule |
 |---|---|---|
 | Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
-| Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only. |
+| Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe`, `adapters/outbound/` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only; everything bound for the internet goes through `adapters/outbound/` (enforced by `tests/test_egress_guard.py`). |
 | Composition root | `bootstrap` | The one place that picks real adapters and wires them into a `Runtime`. |
 | Entry points | `cli` (`udr`) | Thin: build the runtime, call pure logic, print. |
 
 Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
 LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
-[llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md).
+[llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md).
 
 ## Quality gate flow
 
@@ -29,6 +29,12 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
 - **Everything that talks to a model goes through `LLMService`.** Callers state a role and a
   Pydantic schema; retries, repair, truncation handling and telemetry live in one place
   ([llm-layer.md](llm-layer.md)).
+- **One door out, checked at the wire.** The `OutboundGateway` re-checks the exact payload of every
+  send against the denylist and every URL (and redirect hop) against the private-URL guard, and
+  logs every attempt. Callers can prepare queries however they like; nothing reaches a provider
+  unchecked ([outbound.md](outbound.md)).
+- **Confidentiality fails closed, availability fails open.** A sanitizer error blocks the query.
+  An exhausted or invalid Tavily account switches the run to ddgs instead of failing it.
 - **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared
   daemon and a warning event is written, instead of the run failing. The doctor still reports it as
   an error.

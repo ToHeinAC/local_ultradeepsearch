@@ -9,9 +9,13 @@ depth, using only local Ollama models plus web search. It is a local port of
 
 ## Status
 
-Milestone M1 is done: configuration, the model-role registry, the LLM service (structured output,
-retries, telemetry), our own pinned Ollama instance, context calibration and `udr doctor`. The
-research pipeline, GUI and service API are not built yet. Phase status:
+Milestones M1 and M2 are done:
+- **M1:** configuration, the model-role registry, the LLM service, our own pinned Ollama instance,
+  context calibration and `udr doctor`.
+- **M2:** the outbound gateway. Denylist, private-URL guard, query sanitizer, outbound log, Tavily
+  with automatic DuckDuckGo fallback, OpenAlex/Crossref/arXiv, and HTML/PDF fetching.
+
+The research pipeline, GUI and service API are not built yet. Phase status:
 [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Quickstart
@@ -24,6 +28,7 @@ pulled: `qwen3.8-27b:latest`, `LiquidAI/lfm2.5-1.2b-instruct:latest`, `gemma4:e4
 uv sync && uv run pre-commit install   # once per clone
 cp .env.example .env                   # optional; every setting has a default
 uv run udr doctor --calibrate          # checks the machine, measures the reason context
+uv run udr denylist add "Client GmbH"  # terms that must never leave this machine
 uv run pytest                          # offline tests
 uv run pytest -m live                  # tests against the real models
 ```
@@ -31,6 +36,9 @@ uv run pytest -m live                  # tests against the real models
 `udr doctor` starts a second Ollama on `127.0.0.1:11436`, pinned to one GPU, if none is running
 there. How that works, the settings and how to stop it:
 [docs/ollama-runtime.md](docs/ollama-runtime.md).
+
+Web search uses Tavily if `TAVILY_API_KEY` is in `.env`, otherwise DuckDuckGo. Everything that goes
+out is checked against the denylist and logged; see [docs/outbound.md](docs/outbound.md).
 
 ## Layout
 
