@@ -2,13 +2,14 @@ import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from app.events import Event, JsonlEventSink, MemoryEventSink
 
 FIXED = datetime(2026, 10, 1, 12, 0, 0, tzinfo=UTC)
 
 
-def read_lines(path: Path) -> list[dict[str, object]]:
+def read_lines(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
@@ -67,7 +68,7 @@ def test_jsonl_sink_is_thread_safe(tmp_path: Path) -> None:
         t.join()
     lines = read_lines(path)
     assert len(lines) == 60
-    assert sorted(e["data"]["n"] for e in lines) == list(range(60))  # type: ignore[index]  # pyright: ignore[reportIndexIssue,reportArgumentType]
+    assert sorted(e["data"]["n"] for e in lines) == list(range(60))
 
 
 def test_memory_sink_collects_events() -> None:
