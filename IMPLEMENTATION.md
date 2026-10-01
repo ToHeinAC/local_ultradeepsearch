@@ -21,7 +21,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 |---|---|---|---|
 | 0 | Blueprint skeleton (no PRD milestone) | done | full gate green |
 | 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | done | 209 offline tests, 99 % branch coverage; live: `udr doctor --calibrate` and `pytest -m live` (6 passed), see [docs/ollama-runtime.md](docs/ollama-runtime.md) |
-| 2 | M2: Outbound gateway and retrieval adapters | planned | denylist/guard/ledger tests, egress AST test |
+| 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | in progress | denylist/guard/ledger tests, egress AST test |
 | 3 | M3: Per-run source vault and fetch pipeline | planned | fixture-corpus, quote-verification, isolation tests |
 | 4 | M4: Phase 1 — clarification, uploads, brief | planned | brief-graph, hash-approval, zero-outbound tests |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export | planned | light step-sequence, G1–G12 fixtures; live Lite run |
