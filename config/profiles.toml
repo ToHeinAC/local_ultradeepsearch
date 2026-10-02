@@ -10,3 +10,30 @@ long_source_words = 5000    # a source this long gets a summarize-role map-reduc
 credit_cap = 300
 source_analysis_cap = 6
 long_source_words = 5000
+
+# Phase 1 (the brief): interview and upload limits (PRD M4).
+[phase1]
+max_rounds = 5                  # clarification rounds
+max_questions_per_round = 5
+max_files = 10                  # uploads per session
+max_file_mb = 50
+max_total_pages = 500           # PDF pages; other files count in parts of pseudo_page_chars
+ocr_min_chars = 50              # a PDF page with less text is OCRed
+ocr_dpi = 200
+upload_digest_words = 500       # the digest of all uploads inside the brief
+pseudo_page_chars = 3000
+language_min_chars = 20         # shorter first messages do not decide the interview language
+language_min_probability = 0.9
+
+# Word and citation ranges by response format (PRD 3.8), the same for both tiers.
+[response_formats.short]
+words = [500, 2000]
+citations = [15, 30]
+
+[response_formats.structured]
+words = [2000, 5000]
+citations = [40, 80]
+
+[response_formats.argumentative]
+words = [5000, 10000]
+citations = [80, 150]

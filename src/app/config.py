@@ -35,6 +35,9 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     config_dir: Path = REPO_ROOT / "config"
+    templates_dir: Path = (
+        REPO_ROOT / "templates"
+    )  # built-in report templates; uploads: data/templates
 
     shared_ollama_url: str = "http://127.0.0.1:11434"
     own_ollama_enabled: bool = True
