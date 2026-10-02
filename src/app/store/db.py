@@ -1,8 +1,11 @@
 """SQLite connection settings and numbered migrations."""
 
 import sqlite3
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 MIGRATION_1 = """
@@ -89,8 +92,58 @@ CREATE TRIGGER notes_fts_delete AFTER DELETE ON notes BEGIN
 END;
 """
 
+MIGRATION_2 = """
+CREATE TABLE sessions (
+  session_id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  status TEXT NOT NULL
+    CHECK (status IN ('interviewing', 'awaiting_decision', 'saved', 'approved')),
+  interview_language TEXT NOT NULL,
+  report_language TEXT,
+  response_format TEXT CHECK (response_format IN ('short', 'structured', 'argumentative')),
+  template_id TEXT,
+  upload_digest TEXT NOT NULL DEFAULT '',
+  digest_notice TEXT NOT NULL DEFAULT '',
+  brief_text TEXT,
+  brief_sha256 TEXT,
+  approved_sha256 TEXT,
+  archive_path TEXT,
+  run_id TEXT
+);
+CREATE TABLE uploads (
+  session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('pdf', 'docx', 'md', 'txt')),
+  size INTEGER NOT NULL,
+  pages INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  stage TEXT NOT NULL CHECK (stage IN ('stored', 'extracted', 'distilled')),
+  pages_json TEXT NOT NULL DEFAULT '[]',
+  warnings_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, file_id)
+);
+CREATE TABLE upload_parts (
+  session_id TEXT NOT NULL,
+  file_id TEXT NOT NULL,
+  part INTEGER NOT NULL,
+  facts_json TEXT NOT NULL,
+  PRIMARY KEY (session_id, file_id, part),
+  FOREIGN KEY (session_id, file_id) REFERENCES uploads(session_id, file_id) ON DELETE CASCADE
+);
+ALTER TABLE runs ADD COLUMN session_id TEXT;
+ALTER TABLE runs ADD COLUMN brief_sha256 TEXT;
+ALTER TABLE runs ADD COLUMN brief_path TEXT;
+ALTER TABLE runs ADD COLUMN tier TEXT;
+ALTER TABLE runs ADD COLUMN summarize_model TEXT;
+ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'created';
+CREATE UNIQUE INDEX runs_session ON runs(session_id) WHERE session_id IS NOT NULL;
+"""
+
 # Later milestones append their own migrations; never edit one that has shipped.
-MIGRATIONS: list[str] = [MIGRATION_1]
+MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2]
 
 
 WAL_RETRY_S = 5.0
@@ -145,3 +198,37 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[str] = MIGRATIONS) ->
                 conn.execute("ROLLBACK")
             if _version(conn) < number:
                 raise
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+class Database:
+    """One migrated connection with a lock and write transactions, shared by the Phase-1 stores."""
+
+    def __init__(self, path: Path | str, now: Callable[[], datetime] = _utcnow) -> None:
+        self.path = Path(path)
+        self.now = now
+        self.lock = threading.RLock()
+        self.conn = connect(self.path)
+        migrate(self.conn)
+
+    def stamp(self) -> str:
+        return self.now().isoformat()
+
+    @contextmanager
+    def tx(self) -> Generator[None]:
+        """One write transaction; rolled back on any exception, including a crash signal."""
+        with self.lock:
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+            except BaseException:
+                self.conn.execute("ROLLBACK")
+                raise
+            self.conn.execute("COMMIT")
+
+    def close(self) -> None:
+        with self.lock:
+            self.conn.close()
