@@ -10,8 +10,10 @@ from app.brief.render import (
     BriefContext,
     brief_sha256,
     canonical_text,
+    extract_register,
     render_brief,
     render_verbatim,
+    replace_output,
 )
 from app.brief.schemas import BriefDraft
 from app.pipeline.profiles import load_response_formats
@@ -445,3 +447,52 @@ def test_a_template_object_is_all_the_renderer_needs_for_headings() -> None:
     assert "Gliederung: Management Summary; Fragestellung und Abgrenzung;" in render_brief(
         draft(), ctx
     )
+
+
+# ---- re-rendering only the Output section ---------------------------------------------------
+
+
+def test_replacing_the_output_section_changes_nothing_else() -> None:
+    text = render_brief(draft(), context())
+    english = context(
+        settings=SessionSettings(report_language="en", response_format="short", template_id="auto"),
+        template=TEMPLATES["auto"],
+        fmt=FORMATS.short,
+    )
+    result = replace_output(text, english, "Fachlich, für Ingenieure")
+    assert result.split("## Ausgabe")[0] == text.split("## Ausgabe")[0]
+    assert "**Berichtssprache: Englisch.**" in result
+    assert "short, 500 bis 2000 Wörter" in result
+    assert "Literaturübersicht" not in result
+    assert "**Register:** Fachlich, für Ingenieure" in result
+    assert canonical_text(result) == result
+
+
+def test_replacing_the_output_with_the_same_settings_is_a_no_op() -> None:
+    text = render_brief(draft(), context())
+    assert replace_output(text, context(), "Fachlich, für Ingenieure") == text
+
+
+def test_sections_after_the_output_section_are_kept() -> None:
+    text = render_brief(draft(), context()) + "\n## Eigener Abschnitt\n\nVom Eigentümer ergänzt.\n"
+    result = replace_output(text, context(), "Fachlich, für Ingenieure")
+    assert result.endswith("## Eigener Abschnitt\n\nVom Eigentümer ergänzt.\n")
+    assert result.count("## Ausgabe") == 1
+
+
+def test_a_brief_without_an_output_section_gets_one_appended() -> None:
+    result = replace_output("# T\n\n1. Q\n", context())
+    assert result.startswith("# T\n\n1. Q\n\n## Ausgabe\n")
+    assert canonical_text(result) == result
+
+
+def test_the_english_output_heading_is_found_too() -> None:
+    text = render_brief(draft(), context(interview_language="en"))
+    result = replace_output(text, context(interview_language="en"), "Fachlich, für Ingenieure")
+    assert result.count("## Output") == 1
+
+
+def test_the_register_is_read_back_from_a_brief() -> None:
+    assert extract_register(render_brief(draft(), context())) == "Fachlich, für Ingenieure"
+    assert extract_register(render_brief(draft(tone=""), context())) == ""
+    assert extract_register("# T\n\n1. Q\n") == ""

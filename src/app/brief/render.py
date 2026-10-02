@@ -5,7 +5,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-from app.brief.labels import Labels, labels_for, language_name, sources_heading
+from app.brief.labels import DE, EN, Labels, labels_for, language_name, sources_heading
 from app.brief.models import CHECKLIST_ORDER, ChecklistItem, SessionSettings
 from app.brief.parse import parse_brief
 from app.brief.schemas import BriefDraft
@@ -14,6 +14,7 @@ from app.templates import ReportTemplate
 from app.text import normalize_for_match
 
 _LEADING_HASH = re.compile(r"^( {0,3})#")
+_REGISTER = re.compile(r"^- \*\*Register:\*\* (?P<register>.+?)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,27 @@ def render_brief(draft: BriefDraft, ctx: BriefContext) -> str:
         blocks.append(_section(labels.good_answer, _flow(draft.good_answer)))
     blocks.append(render_output(ctx, draft.tone))
     return canonical_text("\n\n".join(blocks))
+
+
+def replace_output(text: str, ctx: BriefContext, register: str = "") -> str:
+    """``text`` with its Output section rendered anew from ``ctx`` and everything else untouched,
+    for a settings change after the owner edited the brief by hand. A brief without an Output
+    section gets one appended."""
+    headings = {f"## {DE.output}".casefold(), f"## {EN.output}".casefold()}
+    lines = canonical_text(text).rstrip("\n").split("\n")
+    start = next((i for i, line in enumerate(lines) if line.strip().casefold() in headings), None)
+    new = render_output(ctx, register)
+    if start is None:
+        return canonical_text("\n".join(lines) + "\n\n" + new)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    parts = ["\n".join(lines[:start]).rstrip("\n"), new, "\n".join(lines[end:]).strip("\n")]
+    return canonical_text("\n\n".join(part for part in parts if part))
+
+
+def extract_register(text: str) -> str:
+    """The register line of the Output section, or "" if the brief has none."""
+    found = _REGISTER.search(text)
+    return found["register"] if found else ""
 
 
 def render_verbatim(pasted: str, ctx: BriefContext) -> str:
