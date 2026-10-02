@@ -475,21 +475,21 @@ the report and exports stay downloadable, marked "nicht bestanden".
 
 ### M4 — Phase 1: clarification, uploads, brief
 - **Deliverable:**
-  - **The `brief` graph:**
-    `ingest_uploads → assess → ask (interrupt) ↺ → draft_brief →
-    decide (interrupt: approve | revise | save) → finalize`.
+  - **The `brief` graph:** `ingest_uploads → assess → ask (interrupt) ↺ → draft_brief →
+    decide (interrupt: approve | revise | edit | settings | save) → finalize`.
   - **Checklist.** Seven items, each `clear | assumed | missing`: question, context,
     goal/decision, audience, scope, output (language, format/length, template), depth (tier).
   - **Rounds.**
     - Up to 5 questions per round, each with a drafted candidate answer the owner accepts, edits
       or replaces. The system never answers on the owner's behalf.
-    - At most 5 rounds; "genug" ends early.
+    - At most 5 rounds; "genug" ends early. Content items still open are listed as "not
+      clarified"; output items take shown defaults (interview language, §3.6 rules, `auto`).
     - Unknowns become numbered research questions. Tier recommendation per §3.6.
   - **Uploads.**
-    - PDF via pypdfium2; pages with fewer than 50 text chars are OCRed with `deepseek-ocr` at
-      200 dpi.
-    - DOCX via python-docx; MD/TXT as-is.
-    - `summarize` distils each file into facts with file and page provenance.
+    - PDF via pypdfium2 (pages with fewer than 50 text chars are OCRed with `deepseek-ocr` at
+      200 dpi); DOCX via python-docx; MD/TXT as-is.
+    - `summarize` distils each file into facts with file and page provenance. The brief carries
+      a digest of at most 500 words.
   - **Brief template.** Labels are in the interview language. Sections, in order:
     1. `# question`, then a `Method:` line (rounds, skipped items), then audience/decision.
     2. Background and context; context from uploads (only if any); goal.
@@ -497,14 +497,16 @@ the report and exports stay downloadable, marked "nicht bestanden".
        answer looks like.
     4. Output: report language; sources in any language; quotation policy; register;
        `response_format` and target words; inline citations; template name and headings.
+  - **Settings and edits.** Report language, format and template are session settings rendered
+    into Output by code (new hash); a direct edit must keep the title and questions parseable.
   - **Approval and storage.** Approval is by sha256. The approved brief is archived immutable at
-    `data/briefs/<UTC>.md`, with no front matter. `udr brief` is the interactive CLI.
+    `data/briefs/<UTC>.md`, with no front matter; "save" parks the session and writes
+    `data/briefs/drafts/<session_id>.md`. `udr brief` is the interactive CLI.
 - **Acceptance criteria:**
   1. No research run can be created unless `approve(session_id, sha256)` matches the current
      brief; a stale hash is rejected.
   2. The archived bytes equal the approved bytes.
-  3. A gateway fake records **zero** outbound calls over a full Phase-1 session, uploads
-     included.
+  3. A gateway fake records **zero** outbound calls over a full Phase-1 session with uploads.
   4. `revise(feedback)` yields a new draft and hash; the old hash no longer approves.
   5. "genug" after round 1 lists every `missing` item under assumptions.
   6. A session survives a service restart and resumes at its pending interrupt.
@@ -512,11 +514,9 @@ the report and exports stay downloadable, marked "nicht bestanden".
   8. Limits: at most 10 files, 50 MB each, 500 pages in total. Violations get a clear error, and
      nothing is partially stored.
 - **Edge cases:**
-  - Empty question: 422.
-  - A pasted finished prompt: one strengthening pass is offered; it may be installed verbatim,
-    and `Method` records this.
-  - Oversized context: map-reduce with a notice.
-  - Encrypted PDF: rejected.
+  - Empty question: 422. Encrypted PDF: rejected. Oversized context: map-reduce with a notice.
+  - A pasted finished prompt: one strengthening pass is offered; it may be installed verbatim
+    (code adds the `Method` line and the Output section).
   - OCR model missing: scanned pages are skipped with a warning.
   - "weiß nicht" becomes a research question.
 - **Dependencies:** M1. M2's gateway fake is needed for criterion 3.
@@ -591,7 +591,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 
     | Group | Endpoints |
     |---|---|
-    | sessions | `POST /sessions`; `POST /sessions/{id}/uploads`; `POST …/messages` (answers, text, `genug`); `GET /sessions/{id}`; `POST …/revise`; `POST …/approve {brief_sha256, tier, template_id, response_format?, summarize_model?}` → `run_id`; `POST …/save` |
+    | sessions | `POST /sessions`; `POST /sessions/{id}/uploads`; `POST …/messages` (answers, text, `genug`); `GET /sessions/{id}`; `POST …/revise`; `PUT …/settings`; `PUT …/brief` (direct edit); `POST …/approve {brief_sha256, tier, summarize_model?}` → `run_id`; `POST …/save` |
     | runs | `POST /runs {brief, tier: light\|full\|auto, template_id, …}` (external brief; its Method line records "externally supplied"); `GET /runs`; `GET /runs/{id}`; `GET …/events?after=`; `GET …/stream` (SSE) |
     | plan | `GET /runs/{id}/search-plan`; `PUT …/search-plan`; `POST …/search-plan/approve {plan_sha256}` |
     | output | `GET …/report?format=md\|docx\|pdf`; `GET …/gate`; `GET …/outbound` |

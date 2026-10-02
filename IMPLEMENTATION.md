@@ -25,7 +25,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | done | 209 offline tests, 99 % branch coverage; live: `udr doctor --calibrate` and `pytest -m live` (6 passed), see [docs/ollama-runtime.md](docs/ollama-runtime.md) |
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
-| 4 | M4: Phase 1 — clarification, uploads, brief | planned | brief-graph, hash-approval, zero-outbound tests |
+| 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | in progress | brief-graph, hash-approval, zero-outbound, kill-and-resume tests |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export | planned | light step-sequence, G1–G12 fixtures; live Lite run |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
@@ -89,6 +89,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   needs the network and our Ollama, so it waits for the owner's go-ahead.
 - Tavily's provider switch and an interrupted outbound log line are not fully durable across a
   restart; see [docs/vault.md](docs/vault.md) (Resuming).
+- M4 builds the template loader and the four built-in templates that PRD M5 lists, because the
+  template is chosen in Phase 1 and written into the brief. M5 uses them.
 - The calibration candidates stop at 32768 and that value fits on this host, so a larger window is
   untested. Raise the candidate list only if a PRD change asks for it.
 - A daemon started by `udr doctor` outlives the command by design (adopted next time). Until the
