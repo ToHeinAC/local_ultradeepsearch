@@ -7,24 +7,18 @@ import codecs
 import re
 from dataclasses import dataclass
 from email.message import Message
-from typing import Literal, Protocol, cast
+from typing import Literal
 from urllib.parse import urlsplit
 
-import pypdfium2  # pyright: ignore[reportMissingTypeStubs]  # publishes no stubs
 import trafilatura
 from charset_normalizer import from_bytes
+
+from app.documents import DocumentError, read_pdf
 
 Kind = Literal["html", "pdf", "text", "other"]
 _META_CHARSET = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?([\w.:-]+)""", re.IGNORECASE)
 _HTML_TYPES = ("text/html", "application/xhtml+xml")
 _TEXT_TYPES = ("text/plain", "text/markdown", "text/x-markdown")
-
-
-class _TextPage(Protocol):
-    """The two PDFium text-page calls used here, typed (pypdfium2 has no stubs)."""
-
-    def get_text_bounded(self) -> str: ...
-    def close(self) -> None: ...
 
 
 class ExtractionError(Exception):
@@ -114,20 +108,10 @@ def html_to_text(html: str, url: str) -> Extracted:
 def pdf_to_text(body: bytes) -> Extracted:
     """Text per page via PDFium. No OCR: scanned pages come back empty."""
     try:
-        pdf = pypdfium2.PdfDocument(body)
-    except pypdfium2.PdfiumError as exc:
-        raise ExtractionError(f"unreadable PDF: {exc}") from exc
-    try:
-        pages: list[str] = []
-        for page in pdf:
-            textpage = cast(_TextPage, page.get_textpage())
-            pages.append(textpage.get_text_bounded().strip())
-            textpage.close()
-            page.close()
-        title = str(pdf.get_metadata_dict().get("Title") or "").strip() or None
-    finally:
-        pdf.close()
-    return Extracted(title=title, text="\n\n".join(p for p in pages if p), pages=tuple(pages))
+        pdf = read_pdf(body)
+    except DocumentError as exc:
+        raise ExtractionError(str(exc)) from exc
+    return Extracted(title=pdf.title, text="\n\n".join(p for p in pdf.pages if p), pages=pdf.pages)
 
 
 def plain_text(body: bytes, content_type: str | None) -> Extracted:
