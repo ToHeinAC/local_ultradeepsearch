@@ -13,6 +13,7 @@ import hashlib
 import math
 import os
 import re
+import shutil
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -258,6 +259,10 @@ class UploadIngestor:
                 pages=row.pages,
             )
         return rows
+
+    def remove_session_files(self, session_id: str) -> None:
+        """Delete every stored file of a session (the session itself was removed or never began)."""
+        shutil.rmtree(self._dir / session_id, ignore_errors=True)
 
     def cleanup_orphans(self, session_id: str) -> int:
         """Delete files of this session that no row refers to (left by a crashed accept)."""

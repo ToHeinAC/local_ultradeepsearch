@@ -355,6 +355,16 @@ def test_an_unknown_session_is_not_found_and_leaves_no_files(tmp_path: Path) -> 
     assert r.files() == []
 
 
+def test_all_files_of_a_session_can_be_removed(tmp_path: Path) -> None:
+    r = rig(tmp_path)
+    r.ingestor.accept(r.session_id, [pdf("a.pdf"), UploadFile("n.md", b"# Notiz\n\nText")])
+    other = r.store.create("de").session_id
+    r.ingestor.accept(other, [pdf("b.pdf", (text_page(9),))])
+    r.ingestor.remove_session_files(r.session_id)
+    assert [p.parent.name for p in r.files()] == [other]  # only the other session's file is left
+    r.ingestor.remove_session_files(r.session_id)  # nothing there any more: no error
+
+
 def test_no_files_is_a_no_op(tmp_path: Path) -> None:
     r = rig(tmp_path)
     assert r.ingestor.accept(r.session_id, []) == []

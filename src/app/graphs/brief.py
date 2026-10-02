@@ -22,7 +22,7 @@ from typing import Any, TypedDict, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph  # pyright: ignore[reportMissingTypeStubs]
-from langgraph.types import interrupt
+from langgraph.types import Command, interrupt
 
 from app.brief.archive import archive_brief, write_draft
 from app.brief.errors import NotFound, StaleBrief
@@ -358,3 +358,39 @@ def build_brief_graph(deps: BriefDeps, checkpointer: BaseCheckpointSaver[Any]) -
         builder.add_edge(name, "decide")
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """Where a session's graph stands, without LangGraph types."""
+
+    values: dict[str, Any]  # empty if the graph never started
+    interrupt: dict[str, Any] | None  # the payload it waits on, if it waits
+    next_nodes: tuple[str, ...]  # what would run next; empty when finished
+
+
+class BriefRunner:
+    """The only door to a compiled brief graph for code outside this package."""
+
+    def __init__(self, graph: Any) -> None:
+        self._graph = graph
+
+    @staticmethod
+    def _config(session_id: str) -> dict[str, Any]:
+        return {"configurable": {"thread_id": session_id}}
+
+    def start(self, state: dict[str, Any]) -> None:
+        self._graph.invoke(state, self._config(state["session_id"]))
+
+    def resume(self, session_id: str, value: dict[str, Any]) -> None:
+        """Answer the pending interrupt with ``value``."""
+        self._graph.invoke(Command(resume=value), self._config(session_id))
+
+    def proceed(self, session_id: str) -> None:
+        """Continue from the last checkpoint (after a crash or a model error)."""
+        self._graph.invoke(None, self._config(session_id))
+
+    def snapshot(self, session_id: str) -> Snapshot:
+        state = self._graph.get_state(self._config(session_id))
+        waiting = [i.value for task in state.tasks for i in task.interrupts]
+        return Snapshot(dict(state.values), waiting[0] if waiting else None, tuple(state.next))

@@ -232,6 +232,30 @@ def test_a_file_is_distilled_only_after_extraction(sessions: SessionStore) -> No
     assert not sessions.mark_distilled(session_id, row.file_id)
 
 
+def test_delete_session_removes_it_with_everything_it_owns(
+    db: Database, sessions: SessionStore
+) -> None:
+    keep = sessions.create("en").session_id
+    gone = sessions.create("de").session_id
+    (row,) = sessions.add_uploads(gone, [upload()])
+    sessions.save_pages(gone, row.file_id, ["x"], [])
+    sessions.add_part(gone, row.file_id, 0, [("Fakt", 1)])
+    assert sessions.delete_session(gone) is True
+    assert sessions.get(gone) is None
+    assert sessions.get(keep) is not None
+    assert db.conn.execute("SELECT COUNT(*) FROM uploads").fetchone()[0] == 0
+    assert db.conn.execute("SELECT COUNT(*) FROM upload_parts").fetchone()[0] == 0
+    assert sessions.delete_session(gone) is False  # already gone
+
+
+def test_an_approved_session_cannot_be_deleted(sessions: SessionStore, runs: RunStore) -> None:
+    session_id = ready(sessions)
+    approve(runs, session_id, brief_sha256(BRIEF))
+    with pytest.raises(WrongState):
+        sessions.delete_session(session_id)
+    assert sessions.get(session_id) is not None
+
+
 def test_deleting_a_session_removes_its_uploads_and_parts(
     db: Database, sessions: SessionStore
 ) -> None:

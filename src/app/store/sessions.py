@@ -131,6 +131,20 @@ class SessionStore:
             ).fetchall()
         return [session_from_row(r) for r in rows]
 
+    def delete_session(self, session_id: str) -> bool:
+        """Remove a session with its uploads and parts (for one that never got going). An approved
+        session belongs to a run and is never deleted. Returns whether a session was removed."""
+        with self._db.tx():
+            row = self._db.conn.execute(
+                "SELECT status FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            if row["status"] == "approved":
+                raise WrongState("an approved session belongs to a run and cannot be deleted")
+            self._db.conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+            return True
+
     def _update(self, session_id: str, assignments: str, params: Sequence[object]) -> None:
         with self._db.tx():
             done = self._db.conn.execute(
