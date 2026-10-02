@@ -55,6 +55,7 @@ ocr_min_chars = 50
 ocr_dpi = 200
 upload_digest_words = 500
 pseudo_page_chars = 3000
+max_facts_per_part = 25
 language_min_chars = 20
 language_min_probability = 0.9
 """
@@ -115,6 +116,7 @@ def test_phase1_limits_match_the_plan() -> None:
     assert (limits.max_files, limits.max_file_mb, limits.max_total_pages) == (10, 50, 500)
     assert (limits.ocr_min_chars, limits.ocr_dpi) == (50, 200)
     assert (limits.upload_digest_words, limits.pseudo_page_chars) == (500, 3000)
+    assert limits.max_facts_per_part == 25
     assert (limits.language_min_chars, limits.language_min_probability) == (20, 0.9)
 
 

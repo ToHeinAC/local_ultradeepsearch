@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True)]
 
@@ -22,3 +22,26 @@ class BriefDraft(BaseModel):
     assumptions: list[Text] = []
     good_answer: Text = ""
     tone: Text = ""  # register: who reads it and how technical it should be
+
+
+class UploadFact(BaseModel):
+    fact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    page: int = Field(ge=1)
+
+
+class UploadFacts(BaseModel):
+    """Facts the summarize role read in one part of an uploaded file."""
+
+    facts: list[UploadFact]
+
+
+class DigestItem(BaseModel):
+    fact: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    file: str
+    page: int = Field(ge=1)
+
+
+class UploadDigest(BaseModel):
+    """The facts worth keeping from all uploads, most relevant first; code renders the lines."""
+
+    items: list[DigestItem]

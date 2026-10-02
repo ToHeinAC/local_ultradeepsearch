@@ -37,6 +37,10 @@ class Labels:
     template: str  # {name} {id} {headings}
     template_auto: str
     notice: str  # {template_language} {report_language}
+    page: str  # abbreviation used in provenance: (file, S. 3)
+    digest_staged: str
+    digest_cut: str  # {words}
+    digest_plain: str
 
 
 DE = Labels(
@@ -88,6 +92,15 @@ DE = Labels(
         "**Hinweis:** Die Vorlage ist auf {template_language} ausgelegt, "
         "der Bericht wird auf {report_language} verfasst."
     ),
+    page="S.",
+    digest_staged=(
+        "Die Unterlagen waren umfangreich; die Zusammenfassung entstand in mehreren Stufen."
+    ),
+    digest_cut="Die Zusammenfassung wurde auf {words} Wörter gekürzt.",
+    digest_plain=(
+        "Die Zusammenfassung ist eine Auswahl der Fakten in Originalreihenfolge, "
+        "ohne Modell erstellt."
+    ),
 )
 
 EN = Labels(
@@ -137,6 +150,10 @@ EN = Labels(
         "**Notice:** The template is written for {template_language}, "
         "the report is written in {report_language}."
     ),
+    page="p.",
+    digest_staged="The files were large; the digest was built in several stages.",
+    digest_cut="The digest was cut to {words} words.",
+    digest_plain="The digest is a plain selection of the facts, made without the model.",
 )
 
 _LANGUAGE_NAMES: dict[str, tuple[str, str]] = {  # code -> (German, English)

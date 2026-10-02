@@ -22,6 +22,7 @@ ocr_min_chars = 50              # a PDF page with less text is OCRed
 ocr_dpi = 200
 upload_digest_words = 500       # the digest of all uploads inside the brief
 pseudo_page_chars = 3000
+max_facts_per_part = 25         # facts the summarize role may list per part of an upload
 language_min_chars = 20         # shorter first messages do not decide the interview language
 language_min_probability = 0.9
 

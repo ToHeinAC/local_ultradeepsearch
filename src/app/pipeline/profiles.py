@@ -31,6 +31,7 @@ class Phase1Limits(BaseModel):
     ocr_dpi: int = Field(ge=72, le=600)
     upload_digest_words: int = Field(gt=0)
     pseudo_page_chars: int = Field(gt=0)
+    max_facts_per_part: int = Field(gt=0)
     language_min_chars: int = Field(gt=0)
     language_min_probability: float = Field(gt=0, le=1)
 
