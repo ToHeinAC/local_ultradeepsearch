@@ -1,6 +1,4 @@
 import threading
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -9,16 +7,16 @@ from brief_rig import (
     DONE,
     FINISHED,
     LIMITS,
-    NOW,
     PASTED,
     QUESTION,
     ROUND_ONE,
     TIER,
     Crash,
     Models,
-    Parts,
+    Rig,
     a_pdf,
-    build_parts,
+    kinds,
+    rig,
 )
 from support import make_docx, make_pdf
 
@@ -29,54 +27,11 @@ from app.brief.errors import (
     UploadRejected,
     WrongState,
 )
-from app.brief.protocol import AnswerInput
 from app.brief.render import brief_sha256, canonical_text
-from app.brief.service import BriefService, ServiceDeps, SessionView
+from app.brief.service import SessionView
 from app.brief.uploads import UploadFile
 from app.graphs.brief import BriefRunner
 from app.llm.errors import LLMModelMissingError
-from app.pipeline.profiles import Phase1Limits
-
-
-@dataclass
-class Rig:
-    service: BriefService
-    parts: Parts
-    models: Models
-    tmp: Path
-
-    def files(self) -> list[Path]:
-        return sorted(p for p in (self.tmp / "uploads").rglob("*") if p.is_file())
-
-    def archives(self) -> list[Path]:
-        folder = self.tmp / "data" / "briefs"
-        return sorted(folder.glob("*.md")) if folder.exists() else []
-
-
-def rig(
-    tmp: Path,
-    models: Models | None = None,
-    *,
-    limits: Phase1Limits = LIMITS,
-    now: datetime = NOW,
-) -> Rig:
-    models = models or Models()
-    parts = build_parts(tmp, models, limits)
-    deps = ServiceDeps(
-        store=parts.sessions,
-        runs=parts.runs,
-        ingestor=parts.ingestor,
-        runner=BriefRunner(parts.graph),
-        limits=limits,
-        templates=parts.deps.templates,
-        formats=parts.deps.formats,
-        now=lambda: now,
-    )
-    return Rig(BriefService(deps), parts, models, tmp)
-
-
-def kinds(*given: str) -> list[AnswerInput]:
-    return [AnswerInput(kind=k, text="Mein Text" if k == "text" else "") for k in given]  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -712,3 +667,83 @@ def test_phase_one_modules_never_load_the_outbound_package() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
     )
     assert (done.returncode, done.stdout.strip()) == (0, "[]"), done.stderr
+
+
+class RecordingGraph:
+    """Records how the runner calls a compiled graph."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, dict[str, Any]]] = []
+
+    def invoke(self, value: object, config: dict[str, Any], **kwargs: Any) -> None:
+        self.calls.append((value, {"config": config, **kwargs}))
+
+
+def test_every_graph_call_persists_its_checkpoints_before_the_next_step() -> None:
+    """LangGraph defaults to writing checkpoints in the background; a SIGKILL could then lose the
+    last steps. The runner must ask for synchronous durability on every call."""
+    graph = RecordingGraph()
+    runner = BriefRunner(graph)
+    runner.start({"session_id": "s0123456789ab"})
+    runner.resume("s0123456789ab", {"strengthen": False})
+    runner.proceed("s0123456789ab")
+    assert len(graph.calls) == 3
+    assert [call[1]["durability"] for call in graph.calls] == ["sync"] * 3
+    assert {call[1]["config"]["configurable"]["thread_id"] for call in graph.calls} == {
+        "s0123456789ab"
+    }
+
+
+# ---- a real SIGKILL (PRD AD10, M4 AC6) ------------------------------------------------------
+
+CHILD = Path(__file__).parent / "brief_crash_child.py"
+
+
+def kill_the_child_while_it_drafts(base_dir: Path) -> str:
+    """Run the child until its model call hangs in the draft, SIGKILL it, return the session id."""
+    import signal
+    import subprocess
+    import sys
+
+    child = subprocess.Popen(
+        [sys.executable, str(CHILD), str(base_dir)], stdout=subprocess.PIPE, text=True
+    )
+    watchdog = threading.Timer(30, child.kill)  # a stuck child must not hang the suite
+    watchdog.start()
+    session_id = ""
+    try:
+        assert child.stdout is not None
+        for line in child.stdout:
+            if line.startswith("STARTED "):
+                session_id = line.split()[1]
+            if line.strip() == "HANGING draft":
+                break
+        child.send_signal(signal.SIGKILL)
+        child.wait(timeout=5)
+    finally:
+        watchdog.cancel()
+        child.kill()
+        child.wait()
+    assert child.returncode == -signal.SIGKILL
+    assert session_id
+    return session_id
+
+
+def test_a_sigkilled_process_is_continued_by_a_fresh_one(tmp_path: Path) -> None:
+    session_id = kill_the_child_while_it_drafts(tmp_path)
+
+    fresh = rig(tmp_path, Models())  # a new process on the files the dead one left
+    stopped = fresh.service.get(session_id)
+    assert stopped.waiting_for == "work"  # the answers are saved, the draft is not
+    assert stopped.round == 1
+    assert fresh.service.recover() == [session_id]
+
+    done = fresh.service.get(session_id)
+    assert done.waiting_for == "decision"
+    assert done.brief_text is not None
+    assert fresh.models.count("assess") == 0  # the questions were not asked again
+    assert fresh.models.count("draft") == 1
+    approved = fresh.service.approve(session_id, str(done.brief_sha256), "light")
+    assert approved.status == "approved"
+    (archive,) = fresh.archives()
+    assert archive.read_bytes() == done.brief_text.encode("utf-8")

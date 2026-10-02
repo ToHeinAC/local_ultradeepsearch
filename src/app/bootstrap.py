@@ -2,8 +2,9 @@
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -29,24 +30,33 @@ from app.adapters.outbound.scholarly import ArxivApi, CrossrefApi, OpenAlexApi
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.outbound.types import HttpFactory, default_http
 from app.adapters.system_probe import Gpu
+from app.brief.interview import Interviewer
+from app.brief.service import BriefService, ServiceDeps
+from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
 from app.doctor import DoctorSnapshot
 from app.events import EventSink
+from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph, open_checkpointer
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
 from app.llm.types import Endpoint, Role, RoleSpec, Transport
 from app.pipeline.analysis import SourceAnalyzer
 from app.pipeline.extraction import Focus, NoteExtractor
 from app.pipeline.fetch import Fetcher, FetchPipeline
-from app.pipeline.profiles import load_profile
+from app.pipeline.profiles import load_phase1, load_profile, load_response_formats
 from app.pipeline.strategies import load_strategies
+from app.store.db import Database
+from app.store.runs import RunStore
+from app.store.sessions import SessionStore
 from app.store.vault import Vault
+from app.templates import ReportTemplate, load_templates
 
 CALIBRATION_FILE = "calibration.json"
 DENYLIST_FILE = "denylist.txt"
 TAVILY_LEDGER_FILE = "tavily-ledger.json"
 VAULT_FILE = "udr.sqlite"
+CHECKPOINT_FILE = "checkpoints.sqlite"
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 TIERS = ("light", "full")
 MIB = 1024 * 1024
@@ -238,4 +248,55 @@ def build_pipeline(
         focus=focus,
         run_dir=directory,
         events=rt.events,
+    )
+
+
+def load_report_templates(settings: Settings) -> dict[str, ReportTemplate]:
+    """The built-in templates (`templates/`) and the owner's uploads (`data/templates/`)."""
+    return load_templates([settings.templates_dir, settings.data_dir / "templates"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -> BriefService:
+    """The Phase-1 service on the runtime's models, ``data/udr.sqlite`` and the checkpointer in
+    ``data/checkpoints.sqlite``. Call ``recover()`` once after a start to continue what a crash
+    left unfinished (PRD AD10). It never touches the outbound gateway."""
+    settings = rt.settings
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    db = Database(settings.data_dir / VAULT_FILE)
+    sessions, runs = SessionStore(db), RunStore(db)
+    limits = load_phase1(settings.config_dir)
+    formats = load_response_formats(settings.config_dir)
+    templates = load_report_templates(settings)
+    ingestor = UploadIngestor(
+        sessions, rt.service, limits, settings.data_dir / "uploads", rt.events
+    )
+    graph = build_brief_graph(
+        BriefDeps(
+            store=sessions,
+            runs=runs,
+            ingestor=ingestor,
+            interviewer=Interviewer(rt.service, limits, formats),
+            templates=templates,
+            formats=formats,
+            limits=limits,
+            briefs_dir=settings.data_dir / "briefs",
+            drafts_dir=settings.data_dir / "briefs" / "drafts",
+        ),
+        open_checkpointer(settings.data_dir / CHECKPOINT_FILE),
+    )
+    return BriefService(
+        ServiceDeps(
+            store=sessions,
+            runs=runs,
+            ingestor=ingestor,
+            runner=BriefRunner(graph),
+            limits=limits,
+            templates=templates,
+            formats=formats,
+            now=now,
+        )
     )

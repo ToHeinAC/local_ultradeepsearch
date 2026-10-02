@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -16,6 +17,7 @@ from app.adapters.outbound.gateway import OutboundGateway, PreparedQuery
 from app.adapters.outbound.log import OutboundLog, OutboundRecord
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.system_probe import Gpu
+from app.brief.uploads import UploadFile
 from app.calibration import Calibration, CtxMeasurement, save_calibration
 from app.config import Settings
 from app.events import MemoryEventSink
@@ -275,3 +277,101 @@ def test_an_unknown_tier_is_an_error(tmp_path: Path) -> None:
     rt, _ = runtime(tmp_path)
     with pytest.raises(ValueError, match="tier"):
         bootstrap.build_pipeline(rt, "run-a", tier="turbo", focus=FOCUS)
+
+
+# ---- the Phase-1 service (M4) ----------------------------------------------------------------
+
+
+def test_the_brief_service_is_wired_from_the_runtime(tmp_path: Path) -> None:
+    from app.llm.fakes import reply
+
+    assessment = {
+        "checklist": [
+            {"item": i, "status": "missing", "note": ""}
+            for i in ("question", "context", "goal", "audience", "scope", "output", "depth")
+        ],
+        "questions": [{"item": "audience", "question": "Wer liest?", "candidate": "Ingenieure"}],
+        "finished_prompt": False,
+    }
+    facts = {"facts": [{"fact": "Ein Fakt.", "page": 1}]}
+    digest = {"items": [{"fact": "Ein Fakt.", "file": "n.txt", "page": 1}]}
+    script: list[ChatReply | Exception] = [
+        reply(json.dumps(x)) for x in (facts, digest, assessment)
+    ]
+    rt, _ = runtime(tmp_path, script=script)
+    service = bootstrap.build_brief_service(rt)
+    upload = UploadFile("n.txt", "Ein kurzer Text über den Rückbau.".encode())
+    view = service.start("Wie lange dauert der Rückbau eines Forschungsreaktors?", [upload])
+    assert (view.waiting_for, view.interview_language) == ("questions", "de")
+    assert [q["question"] for q in view.questions] == ["Wer liest?"]
+    assert [u.stage for u in view.uploads] == ["distilled"]
+    data = rt.settings.data_dir
+    assert (data / bootstrap.VAULT_FILE).exists()
+    assert (data / bootstrap.CHECKPOINT_FILE).exists()
+    assert len(list((data / "uploads" / view.session_id).iterdir())) == 1
+
+
+def test_a_session_survives_building_the_service_again(tmp_path: Path) -> None:
+    from app.llm.fakes import reply
+
+    assessment = {
+        "checklist": [{"item": "scope", "status": "missing", "note": ""}],
+        "questions": [{"item": "scope", "question": "Was nicht?", "candidate": "x"}],
+        "finished_prompt": False,
+    }
+    rt, _ = runtime(tmp_path, script=[reply(json.dumps(assessment))])
+    first = bootstrap.build_brief_service(rt).start("Eine Frage zum Rückbau?")
+    again = bootstrap.build_brief_service(rt).get(first.session_id)  # a restarted process
+    assert (again.waiting_for, again.questions) == ("questions", first.questions)
+
+
+def test_report_templates_come_from_the_repository_and_the_data_directory(tmp_path: Path) -> None:
+    rt, _ = runtime(tmp_path)
+    folder = rt.settings.data_dir / "templates"
+    folder.mkdir(parents=True)
+    (folder / "eigene.md").write_text(
+        "---\nid: eigene\nname: Eigene\ndescription: d\nlanguage: de\n"
+        "default_response_format: short\n---\n\n## Eins\n\n## Zwei\n",
+        encoding="utf-8",
+    )
+    templates = bootstrap.load_report_templates(rt.settings)
+    assert "auto" in templates
+    assert "literaturuebersicht" in templates
+    assert templates["eigene"].headings == ("Eins", "Zwei")
+
+
+def test_a_session_through_the_composition_writes_the_documented_files(tmp_path: Path) -> None:
+    from app.llm.fakes import reply
+    from app.store.db import Database
+    from app.store.runs import RunStore
+
+    nothing_to_ask = {
+        "checklist": [{"item": "question", "status": "clear", "note": ""}],
+        "questions": [],
+        "finished_prompt": False,
+    }
+    draft = {"question": "Wie lange dauert der Rückbau?", "research_questions": ["Wie lange?"]}
+    tier = {"tier": "light", "response_format": "short", "rationale": "Klare Frage."}
+    script: list[ChatReply | Exception] = [
+        reply(json.dumps(x)) for x in (nothing_to_ask, draft, tier)
+    ]
+    rt, _ = runtime(tmp_path, script=script)
+    clock = datetime(2026, 10, 2, 9, 30, 15, tzinfo=UTC)
+    service = bootstrap.build_brief_service(rt, now=lambda: clock)
+
+    view = service.start("Wie lange dauert der Rückbau eines Forschungsreaktors?")
+    assert view.waiting_for == "decision"
+    data = rt.settings.data_dir
+    parked = service.save(view.session_id)
+    assert parked.status == "saved"
+    assert (data / "briefs" / "drafts" / f"{view.session_id}.md").read_text(
+        encoding="utf-8"
+    ) == view.brief_text
+
+    done = service.approve(view.session_id, str(view.brief_sha256), "auto")
+    archive = data / "briefs" / "2026-10-02T09-30-15Z.md"
+    assert archive.read_text(encoding="utf-8") == view.brief_text
+    assert done.archive_path == str(archive)
+    run = RunStore(Database(data / bootstrap.VAULT_FILE)).get_run(str(done.run_id))
+    assert run is not None
+    assert (run.tier, run.status, run.brief_sha256) == ("light", "queued", view.brief_sha256)

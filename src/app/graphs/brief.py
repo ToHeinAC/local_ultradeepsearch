@@ -18,9 +18,11 @@ Rules that keep it resumable:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph  # pyright: ignore[reportMissingTypeStubs]
 from langgraph.types import Command, interrupt
 
@@ -49,6 +51,7 @@ from app.brief.render import (
 from app.brief.schemas import BriefDraft
 from app.brief.uploads import UploadIngestor
 from app.pipeline.profiles import Phase1Limits, ResponseFormats
+from app.store.db import connect
 from app.store.runs import RunStore
 from app.store.sessions import SessionRow, SessionStore
 from app.templates import ReportTemplate
@@ -379,18 +382,28 @@ class BriefRunner:
     def _config(session_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": session_id}}
 
+    def _invoke(self, value: Any, session_id: str) -> None:
+        # LangGraph writes checkpoints in the background by default ("async"), so a SIGKILL could
+        # lose the latest steps. "sync" persists each step before the next one starts (AD10).
+        self._graph.invoke(value, self._config(session_id), durability="sync")
+
     def start(self, state: dict[str, Any]) -> None:
-        self._graph.invoke(state, self._config(state["session_id"]))
+        self._invoke(state, state["session_id"])
 
     def resume(self, session_id: str, value: dict[str, Any]) -> None:
         """Answer the pending interrupt with ``value``."""
-        self._graph.invoke(Command(resume=value), self._config(session_id))
+        self._invoke(Command(resume=value), session_id)
 
     def proceed(self, session_id: str) -> None:
         """Continue from the last checkpoint (after a crash or a model error)."""
-        self._graph.invoke(None, self._config(session_id))
+        self._invoke(None, session_id)
 
     def snapshot(self, session_id: str) -> Snapshot:
         state = self._graph.get_state(self._config(session_id))
         waiting = [i.value for task in state.tasks for i in task.interrupts]
         return Snapshot(dict(state.values), waiting[0] if waiting else None, tuple(state.next))
+
+
+def open_checkpointer(path: Path) -> SqliteSaver:
+    """The SQLite checkpointer of the graphs (`data/checkpoints.sqlite`): WAL, full fsync."""
+    return SqliteSaver(connect(path))

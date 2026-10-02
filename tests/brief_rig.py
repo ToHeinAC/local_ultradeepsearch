@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,9 +12,11 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from support import make_pdf, make_settings
 
 from app.brief.interview import Interviewer
+from app.brief.protocol import AnswerInput
+from app.brief.service import BriefService, ServiceDeps
 from app.brief.uploads import UploadFile, UploadIngestor
 from app.events import MemoryEventSink
-from app.graphs.brief import BriefDeps, build_brief_graph
+from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph
 from app.llm.fakes import CallbackTransport, reply
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
@@ -33,6 +36,7 @@ URLS = {Endpoint.OWN: "http://own", Endpoint.SHARED: "http://shared"}
 REGISTRY = build_registry(SETTINGS)
 NOW = datetime(2026, 10, 2, 9, 30, 15, tzinfo=UTC)
 QUESTION = "Wie lange dauert der Rückbau eines Forschungsreaktors?"
+HANG_SECONDS = 120
 ITEMS = ("question", "context", "goal", "audience", "scope", "output", "depth")
 
 
@@ -75,6 +79,9 @@ class Models:
     tier: dict[str, Any] = field(default_factory=lambda: TIER)
     crash_on: dict[str, int] = field(default_factory=lambda: {})
     errors: dict[str, Exception] = field(default_factory=lambda: {})  # kind -> error to return
+    hang_on: dict[str, int] = field(
+        default_factory=lambda: {}
+    )  # kind -> n-th call hangs (SIGKILL test)
     calls: dict[str, int] = field(default_factory=lambda: {})
     prompts_seen: dict[str, list[str]] = field(default_factory=lambda: {})
 
@@ -92,6 +99,9 @@ class Models:
         )
         if self.crash_on.get(kind) == self.calls[kind]:
             raise Crash(kind)
+        if self.hang_on.get(kind) == self.calls[kind]:
+            print(f"HANGING {kind}", flush=True)
+            time.sleep(HANG_SECONDS)
         if kind in self.errors:
             return self.errors[kind]
         if kind == "ocr":
@@ -183,3 +193,44 @@ def build_parts(tmp: Path, models: Models, limits: Phase1Limits = LIMITS) -> Par
     saver = SqliteSaver(sqlite3.connect(tmp / "checkpoints.sqlite", check_same_thread=False))
     graph = build_brief_graph(deps, saver)
     return Parts(db, sessions, runs, ingestor, interviewer, deps, graph, llm, events)
+
+
+@dataclass
+class Rig:
+    service: BriefService
+    parts: Parts
+    models: Models
+    tmp: Path
+
+    def files(self) -> list[Path]:
+        return sorted(p for p in (self.tmp / "uploads").rglob("*") if p.is_file())
+
+    def archives(self) -> list[Path]:
+        folder = self.tmp / "data" / "briefs"
+        return sorted(folder.glob("*.md")) if folder.exists() else []
+
+
+def rig(
+    tmp: Path,
+    models: Models | None = None,
+    *,
+    limits: Phase1Limits = LIMITS,
+    now: datetime = NOW,
+) -> Rig:
+    models = models or Models()
+    parts = build_parts(tmp, models, limits)
+    deps = ServiceDeps(
+        store=parts.sessions,
+        runs=parts.runs,
+        ingestor=parts.ingestor,
+        runner=BriefRunner(parts.graph),
+        limits=limits,
+        templates=parts.deps.templates,
+        formats=parts.deps.formats,
+        now=lambda: now,
+    )
+    return Rig(BriefService(deps), parts, models, tmp)
+
+
+def kinds(*given: str) -> list[AnswerInput]:
+    return [AnswerInput(kind=k, text="Mein Text" if k == "text" else "") for k in given]  # type: ignore[arg-type]
