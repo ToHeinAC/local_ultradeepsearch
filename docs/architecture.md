@@ -4,15 +4,16 @@
 
 | Layer | Where | Rule |
 |---|---|---|
-| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `text`, `store/`, `pipeline/`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
+| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `text`, `templates`, `documents`, `store/`, `pipeline/`, `brief/`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
 | Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe`, `adapters/outbound/` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only; everything bound for the internet goes through `adapters/outbound/` (enforced by `tests/test_egress_guard.py`). |
+| Graphs | `graphs/` | The only code that imports LangGraph (`tests/test_layer_rules.py`). Nodes call core logic; the rest of the code talks to a graph through `BriefRunner`. |
 | Composition root | `bootstrap` | The one place that picks real adapters and wires them into a `Runtime`. |
 | Entry points | `cli` (`udr`) | Thin: build the runtime, call pure logic, print. |
 
 Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
 LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
 [llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md),
-[vault.md](vault.md).
+[vault.md](vault.md), [brief.md](brief.md).
 
 ## Quality gate flow
 
@@ -39,6 +40,12 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
   stage: nothing stored is fetched again, finished model work is not redone, credits are not
   spent twice. Code that is interrupted must never be swallowed (`BaseException` is not caught),
   and each pipeline step has a kill-and-resume test ([vault.md](vault.md)).
+- **Interrupts are model-free, checkpoints are synchronous.** LangGraph runs an interrupted node
+  again from its start, so nodes with an `interrupt` do no model work and write nothing before it;
+  every other node is idempotent. Checkpoints use `durability="sync"`: the default writes them in
+  the background, and a real SIGKILL test showed it loses the last steps ([brief.md](brief.md)).
+- **Phase 1 never reaches the Internet.** Its modules do not import the outbound package (an AST
+  test and a fresh-process test), so "zero outbound requests" is structural, not a promise.
 - **Confidentiality fails closed, availability fails open.** A sanitizer error blocks the query.
   An exhausted or invalid Tavily account switches the run to ddgs instead of failing it.
 - **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared
@@ -47,7 +54,8 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
 - **Fakes at every seam.** `ScriptedTransport`, a fake instance probe and spawner, and an injectable
   clock make the 30-second startup timeout and the retry backoff testable instantly. Mutation checks
   (deliberately breaking the code) confirm the tests fail when the behavior is wrong; the M3 ones
-  found a real race, a thread-unsafe file write and an untested transaction boundary.
+  found a real race, a thread-unsafe file write, an untested transaction boundary and, in M4, a
+  durability bug that only a real kill exposed.
 - **Python 3.11 is the floor.** CI runs 3.11 and 3.14, so no syntax newer than 3.11;
   `tests/test_py311_syntax.py` enforces it.
 - **One gate definition.** The pre-commit config is the only list of checks. The Stop hook and CI
