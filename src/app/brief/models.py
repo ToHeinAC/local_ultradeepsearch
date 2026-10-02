@@ -20,3 +20,28 @@ class SessionSettings(BaseModel):
     report_language: str = Field(pattern=r"^[a-z]{2}$")
     response_format: ResponseFormatName
     template_id: str = Field(min_length=1)
+
+
+ChecklistStatus = Literal["clear", "assumed", "missing"]
+Checklist = dict[ChecklistItem, ChecklistStatus]
+AnswerKind = Literal["accept", "text", "unknown"]
+
+
+class Answer(BaseModel):
+    """The owner's reaction to one question: accept the candidate, type one, or "don't know"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    round: int = Field(ge=1)
+    item: ChecklistItem
+    question: str
+    candidate: str
+    kind: AnswerKind
+    text: str = ""
+
+    @property
+    def value(self) -> str:
+        """What the owner answered; empty for "don't know"."""
+        if self.kind == "accept":
+            return self.candidate
+        return self.text if self.kind == "text" else ""
