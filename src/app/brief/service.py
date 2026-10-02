@@ -14,6 +14,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -59,6 +60,7 @@ class ServiceDeps:
     limits: Phase1Limits
     templates: Mapping[str, ReportTemplate]
     formats: ResponseFormats
+    drafts_dir: Path  # where `save` writes the draft of a parked session
     now: Callable[[], datetime]
 
 
@@ -93,6 +95,7 @@ class SessionView:
     uploads: tuple[UploadSummary, ...]
     run_id: str | None
     archive_path: str | None
+    draft_path: str | None  # the draft file of a parked session
     error: str | None
 
 
@@ -180,8 +183,12 @@ class BriefService:
             ),
             run_id=row.run_id,
             archive_path=row.archive_path,
+            draft_path=self._draft_path(row),
             error=error,
         )
+
+    def _draft_path(self, row: SessionRow) -> str | None:
+        return str(self._d.drafts_dir / f"{row.session_id}.md") if row.status == "saved" else None
 
     def _discard(self, session_id: str) -> None:
         self._d.store.delete_session(session_id)
@@ -337,6 +344,10 @@ class BriefService:
 
     def get(self, session_id: str) -> SessionView:
         return self._view(session_id)
+
+    def templates(self) -> list[tuple[str, str]]:
+        """(id, name) of every report template a session can choose."""
+        return [(t.id, t.name) for t in self._d.templates.values()]
 
     def list_sessions(self) -> list[SessionRow]:
         return self._d.store.list_sessions()

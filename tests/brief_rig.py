@@ -227,6 +227,7 @@ def rig(
         limits=limits,
         templates=parts.deps.templates,
         formats=parts.deps.formats,
+        drafts_dir=parts.deps.drafts_dir,
         now=lambda: now,
     )
     return Rig(BriefService(deps), parts, models, tmp)

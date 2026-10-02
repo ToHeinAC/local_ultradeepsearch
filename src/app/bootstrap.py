@@ -271,6 +271,8 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
     limits = load_phase1(settings.config_dir)
     formats = load_response_formats(settings.config_dir)
     templates = load_report_templates(settings)
+    briefs_dir = settings.data_dir / "briefs"
+    drafts_dir = briefs_dir / "drafts"
     ingestor = UploadIngestor(
         sessions, rt.service, limits, settings.data_dir / "uploads", rt.events
     )
@@ -283,8 +285,8 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
             templates=templates,
             formats=formats,
             limits=limits,
-            briefs_dir=settings.data_dir / "briefs",
-            drafts_dir=settings.data_dir / "briefs" / "drafts",
+            briefs_dir=briefs_dir,
+            drafts_dir=drafts_dir,
         ),
         open_checkpointer(settings.data_dir / CHECKPOINT_FILE),
     )
@@ -297,6 +299,7 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
             limits=limits,
             templates=templates,
             formats=formats,
+            drafts_dir=drafts_dir,
             now=now,
         )
     )

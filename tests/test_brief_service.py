@@ -344,6 +344,8 @@ def test_save_parks_the_session_and_any_action_continues_it(r: Rig) -> None:
     assert parked.status == "saved"
     draft = r.tmp / "data" / "briefs" / "drafts" / f"{view.session_id}.md"
     assert draft.read_text(encoding="utf-8") == view.brief_text
+    assert parked.draft_path == str(draft)
+    assert view.draft_path is None
     again = r.service.get(view.session_id)
     assert (again.status, again.waiting_for) == ("saved", "decision")
     resumed = r.service.set_settings(view.session_id, report_language="en")
@@ -606,6 +608,13 @@ def test_recover_cleans_orphan_upload_files(tmp_path: Path) -> None:
 
 
 # ---- listing --------------------------------------------------------------------------------
+
+
+def test_the_templates_a_session_can_choose_from_are_listed(r: Rig) -> None:
+    choices = dict(r.service.templates())
+    assert choices["auto"] == "Automatisch"
+    assert choices["literaturuebersicht"] == "Literaturübersicht"
+    assert len(choices) == 5
 
 
 def test_sessions_are_listed_newest_first(r: Rig) -> None:

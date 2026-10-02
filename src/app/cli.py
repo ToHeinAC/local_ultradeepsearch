@@ -3,12 +3,17 @@
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 
 from app import bootstrap
 from app.adapters.ollama_instance import InstanceState
 from app.adapters.outbound.denylist import Denylist
 from app.bootstrap import DENYLIST_FILE
+from app.brief.console import ConsoleIO, run_session
+from app.brief.errors import InvalidInput, NotFound
+from app.brief.service import BriefService
+from app.brief.uploads import UploadFile
 from app.calibration import CANDIDATES, CalibrationError, save_calibration
 from app.doctor import evaluate, exit_code, render, render_json
 from app.events import JsonlEventSink
@@ -60,6 +65,93 @@ def doctor(
     if problem:
         typer.echo(problem, err=True)
     raise typer.Exit(1 if problem else exit_code(checks))
+
+
+def _brief_service() -> BriefService:
+    """The Phase-1 service; sessions a crash left unfinished are continued first (PRD AD10)."""
+    settings = bootstrap.load_settings()
+    events = JsonlEventSink(settings.data_dir / "events.jsonl")
+    service = bootstrap.build_brief_service(bootstrap.build_runtime(settings, events))
+    service.recover()
+    return service
+
+
+def _read_uploads(paths: list[Path]) -> list[UploadFile]:
+    for path in paths:
+        if not path.is_file():
+            typer.echo(f"Datei nicht gefunden: {path}", err=True)
+            raise typer.Exit(2)
+    return [UploadFile(path.name, path.read_bytes()) for path in paths]
+
+
+def _print_sessions(service: BriefService) -> None:
+    rows = service.list_sessions()
+    if not rows:
+        typer.echo("Keine Sitzungen.")
+    for row in rows:
+        typer.echo(
+            f"{row.session_id}  {row.status:<18} {row.interview_language}  {row.created_at[:19]}"
+        )
+
+
+def _brief_io() -> ConsoleIO:
+    return ConsoleIO(
+        ask=lambda prompt: typer.prompt(prompt, default="", show_default=False),
+        say=typer.echo,
+        edit=lambda text: click.edit(text, extension=".md"),
+    )
+
+
+@app.command()
+def brief(
+    question: Annotated[
+        str | None, typer.Argument(help="Die Forschungsfrage (sonst wird sie abgefragt).")
+    ] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--file", "-f", help="Datei als Kontext (PDF, DOCX, MD, TXT); mehrfach möglich."
+        ),
+    ] = None,
+    session: Annotated[
+        str | None,
+        typer.Option("--session", help="Eine offene oder gespeicherte Sitzung fortsetzen."),
+    ] = None,
+    list_sessions: Annotated[bool, typer.Option("--list", help="Die Sitzungen auflisten.")] = False,
+) -> None:
+    """Klärt die Forschungsfrage im Dialog und gibt den Brief frei (Phase 1, ohne Internet)."""
+    if session and (question or file or list_sessions):
+        typer.echo(
+            "--session kann nicht mit einer Frage, Dateien oder --list kombiniert werden.", err=True
+        )
+        raise typer.Exit(2)
+    uploads = _read_uploads(file or [])  # before any model is touched
+    service = _brief_service()
+    if list_sessions:
+        _print_sessions(service)
+        return
+    if session:
+        try:
+            service.get(session)
+        except NotFound as exc:
+            typer.echo(f"Sitzung nicht gefunden: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        session_id = session
+    else:
+        text = question if question is not None else typer.prompt("Was möchten Sie recherchieren?")
+        if not text.strip():
+            typer.echo("Die Frage darf nicht leer sein.", err=True)
+            raise typer.Exit(2)
+        try:
+            session_id = service.start(text, uploads).session_id
+        except InvalidInput as exc:
+            typer.echo(f"Das ging nicht: {exc}", err=True)
+            raise typer.Exit(2) from exc
+    try:
+        run_session(service, _brief_io(), session_id)
+    except typer.Abort as exc:
+        typer.echo(f"\nAbgebrochen. Weiter mit: udr brief --session {session_id}", err=True)
+        raise typer.Exit(1) from exc
 
 
 denylist_app = typer.Typer(help="Terms that must never leave this machine (PRD §3.2).")

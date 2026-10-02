@@ -749,6 +749,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "charset-normalizer" },
+    { name = "click" },
     { name = "datasketch" },
     { name = "ddgs" },
     { name = "defusedxml" },
@@ -778,6 +779,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3.5.2" },
+    { name = "click", specifier = ">=8.5.0" },
     { name = "datasketch", specifier = ">=2.0.0" },
     { name = "ddgs", specifier = ">=9.16.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
