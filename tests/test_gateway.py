@@ -428,6 +428,25 @@ def test_fetch_html_locally(rig: Rig) -> None:
     )
 
 
+def test_fetched_documents_carry_what_the_page_says_about_itself(rig: Rig) -> None:
+    head = (
+        '<meta name="author" content="Erika Mustermann">'
+        '<meta property="og:site_name" content="Atomforum">'
+        '<meta property="article:published_time" content="2024-05-06T10:00:00Z">'
+    )
+    page = ARTICLE.replace("<body>", f"<head>{head}</head><body>")
+    rig.net.routes["public.org/meta"] = lambda r: httpx.Response(
+        200, headers={"content-type": "text/html"}, content=page.encode()
+    )
+    doc = rig.gateway.fetch("https://public.org/meta", step="2")
+    assert isinstance(doc, Document)
+    assert (doc.author, doc.publisher, doc.published) == (
+        "Erika Mustermann",
+        "Atomforum",
+        "2024-05-06",
+    )
+
+
 def test_fetch_pdf_locally(rig: Rig) -> None:
     pdf = make_pdf(["Page one", "Page two"])
     rig.net.routes["public.org/a.pdf"] = lambda r: httpx.Response(

@@ -10,7 +10,7 @@ import re
 import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -60,6 +60,17 @@ def _normalize_body(text: str) -> str:
     """Single spaces inside paragraphs, one blank line between them. The words are untouched."""
     blocks = re.split(r"\n\s*\n", text.replace("\r\n", "\n"))
     return "\n\n".join(p for p in (" ".join(b.split()) for b in blocks) if p)
+
+
+def _enriched(meta: SourceMeta, doc: Document) -> SourceMeta:
+    """``meta`` completed with what the page says about itself; what the search knew wins."""
+    year = int(doc.published[:4]) if doc.published and doc.published[:4].isdigit() else None
+    return replace(
+        meta,
+        authors=meta.authors or ((doc.author,) if doc.author else ()),
+        year=meta.year if meta.year is not None else year,
+        venue=meta.venue or doc.publisher,
+    )
 
 
 def _retryable(reason: str) -> bool:
@@ -218,7 +229,7 @@ class FetchPipeline:
             derivative_of=original,
             minhash=sig,
             links=page_links(doc.html, doc.final_url) if doc.html else (),
-            meta=meta,
+            meta=_enriched(meta, doc),
         )
 
     # ---- stages ---------------------------------------------------------------------------

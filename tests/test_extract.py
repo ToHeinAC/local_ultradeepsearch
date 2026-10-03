@@ -86,6 +86,26 @@ def test_pdf_without_title_metadata() -> None:
     assert pdf_to_text(make_pdf(["x"])).title is None
 
 
+def test_html_metadata_gives_author_site_and_date() -> None:
+    head = (
+        '<meta name="author" content="Erika Mustermann">'
+        '<meta property="og:site_name" content="Atomforum">'
+        '<meta property="article:published_time" content="2024-05-06T10:00:00Z">'
+    )
+    out = html_to_text(ARTICLE.replace("</head>", f"{head}</head>"), "https://example.org/a")
+    assert (out.author, out.sitename, out.date) == ("Erika Mustermann", "Atomforum", "2024-05-06")
+
+
+def test_html_without_metadata_has_none() -> None:
+    out = html_to_text(ARTICLE, "https://example.org/a")
+    assert (out.author, out.sitename, out.date) == (None, None, None)
+
+
+def test_pdf_author_comes_from_the_document_info() -> None:
+    assert pdf_to_text(make_pdf(["x"], title="T", author="A. Author")).author == "A. Author"
+    assert pdf_to_text(make_pdf(["x"], title="T")).author is None
+
+
 def test_corrupt_pdf_raises() -> None:
     with pytest.raises(ExtractionError, match="PDF"):
         pdf_to_text(b"%PDF-1.4 this is not a pdf")

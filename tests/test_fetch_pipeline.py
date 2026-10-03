@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -217,6 +218,38 @@ def test_title_links_and_tier_are_recorded(tmp_path: Path) -> None:
     assert blog.note.source_tier == "unknown"
     assert scholarly.note.source_tier == "institutional"
     assert (doi.note.doi, doi.note.source_tier) == (DOI, "institutional")
+
+
+def test_page_metadata_fills_author_year_and_publisher_unless_search_knew_better(
+    tmp_path: Path,
+) -> None:
+    web, scholarly = "https://blog.example.net/a", "https://journal.example.net/a"
+    page = doc(web, article(2))
+    paper = doc(scholarly, article(3))
+    served = {
+        web: replace(
+            page, author="Erika Mustermann", publisher="Atomforum", published="2024-05-06"
+        ),
+        scholarly: replace(
+            paper, author="Page Author", publisher="Page Site", published="1999-01-01"
+        ),
+    }
+    b = build(tmp_path, served)
+    plain = ingested(b.pipeline.ingest(web)).note.meta
+    known = SourceMeta(scholarly=True, authors=("Ada Lovelace",), year=2020, venue="Nature")
+    rich = ingested(b.pipeline.ingest(scholarly, meta=known)).note.meta
+    assert (plain["authors"], plain["year"], plain["venue"]) == (
+        ["Erika Mustermann"],
+        2024,
+        "Atomforum",
+    )
+    assert (rich["authors"], rich["year"], rich["venue"]) == (["Ada Lovelace"], 2020, "Nature")
+
+
+def test_an_unreadable_publication_date_gives_no_year(tmp_path: Path) -> None:
+    url = "https://blog.example.net/a"
+    b = build(tmp_path, {url: replace(doc(url, article(2)), published="gestern")})
+    assert ingested(b.pipeline.ingest(url)).note.meta["year"] is None
 
 
 def test_the_search_index_covers_stored_sources(tmp_path: Path) -> None:

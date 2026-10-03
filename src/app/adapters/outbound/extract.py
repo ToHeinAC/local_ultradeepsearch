@@ -30,6 +30,9 @@ class Extracted:
     title: str | None
     text: str
     pages: tuple[str, ...] = ()  # PDF only: one entry per page, for page-level provenance
+    author: str | None = None
+    sitename: str | None = None  # the publisher, for the report's source list
+    date: str | None = None  # publication date as the page states it, usually YYYY-MM-DD
 
 
 def _media_type(content_type: str | None) -> str:
@@ -101,8 +104,14 @@ def html_to_text(html: str, url: str) -> Extracted:
         include_links=False,
         include_images=False,
     )
-    title = trafilatura.extract_metadata(html).title or None
-    return Extracted(title=title, text=(text or "").strip())
+    meta = trafilatura.extract_metadata(html)
+    return Extracted(
+        title=meta.title or None,
+        text=(text or "").strip(),
+        author=meta.author or None,
+        sitename=meta.sitename or None,
+        date=meta.date or None,
+    )
 
 
 def pdf_to_text(body: bytes) -> Extracted:
@@ -111,7 +120,12 @@ def pdf_to_text(body: bytes) -> Extracted:
         pdf = read_pdf(body)
     except DocumentError as exc:
         raise ExtractionError(str(exc)) from exc
-    return Extracted(title=pdf.title, text="\n\n".join(p for p in pdf.pages if p), pages=pdf.pages)
+    return Extracted(
+        title=pdf.title,
+        text="\n\n".join(p for p in pdf.pages if p),
+        pages=pdf.pages,
+        author=pdf.author,
+    )
 
 
 def plain_text(body: bytes, content_type: str | None) -> Extracted:

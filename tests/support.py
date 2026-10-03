@@ -13,7 +13,7 @@ def make_settings(**overrides: Any) -> Settings:
     return Settings(_env_file=None, **overrides)  # pyright: ignore[reportCallIssue]
 
 
-def make_pdf(pages: list[str], title: str = "") -> bytes:
+def make_pdf(pages: list[str], title: str = "", author: str = "") -> bytes:
     """A minimal valid PDF with one Helvetica text line per page (ASCII text only)."""
     page_count = len(pages)
     font_id = 3 + 2 * page_count
@@ -31,8 +31,11 @@ def make_pdf(pages: list[str], title: str = "") -> bytes:
         objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
     objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     info_ref = ""
-    if title:
-        objects.append(f"<< /Title ({title}) >>")
+    if title or author:
+        fields = (f"/Title ({title}) " if title else "") + (
+            f"/Author ({author}) " if author else ""
+        )
+        objects.append(f"<< {fields}>>")
         info_ref = f" /Info {len(objects)} 0 R"
     out = b"%PDF-1.4\n"
     offsets: list[int] = []

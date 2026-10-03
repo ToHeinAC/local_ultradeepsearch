@@ -83,6 +83,9 @@ class Document:
     pages: tuple[str, ...]  # PDF pages; empty otherwise
     html: str | None  # decoded HTML for link extraction in M3; None for PDFs and Tavily extracts
     via: Literal["local", "tavily_extract"]
+    author: str | None = None  # what the page states about itself, for the report's source list
+    publisher: str | None = None
+    published: str | None = None
 
 
 @dataclass(frozen=True)
@@ -421,6 +424,9 @@ class OutboundGateway:
             extracted.pages,
             html,
             "local",
+            extracted.author,
+            extracted.sitename,
+            extracted.date,
         )
 
     @staticmethod

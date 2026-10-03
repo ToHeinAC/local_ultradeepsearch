@@ -71,6 +71,7 @@ class _DocxBody(Protocol):
 class PdfText:
     title: str | None
     pages: tuple[str, ...]  # one entry per page; a page without a text layer is ""
+    author: str | None = None
 
 
 def _open_pdf(body: bytes) -> _Pdf:
@@ -101,10 +102,12 @@ def read_pdf(body: bytes) -> PdfText:
             pages.append(textpage.get_text_bounded().strip())
             textpage.close()
             page.close()
-        title = str(pdf.get_metadata_dict().get("Title") or "").strip() or None
+        info = pdf.get_metadata_dict()
+        title = str(info.get("Title") or "").strip() or None
+        author = str(info.get("Author") or "").strip() or None
     finally:
         pdf.close()
-    return PdfText(title=title, pages=tuple(pages))
+    return PdfText(title=title, pages=tuple(pages), author=author)
 
 
 def _chunk(kind: bytes, data: bytes) -> bytes:
