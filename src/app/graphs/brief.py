@@ -17,6 +17,7 @@ Rules that keep it resumable:
   before a resume (see `app.brief.protocol`).
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -283,6 +284,18 @@ class _Nodes:
             brief_path=str(path),
             tier=decision.tier,
             summarize_model=decision.summarize_model,
+        )
+        shown = build_context(cast("dict[str, Any]", state), self._d.templates, self._d.formats)
+        self._d.runs.set_settings(
+            run.run_id,
+            json.dumps(
+                {
+                    **shown.settings.model_dump(),
+                    "interview_language": state["language"],
+                    "tier": decision.tier,
+                    "summarize_model": decision.summarize_model,
+                }
+            ),
         )
         return {
             "result": {"run_id": run.run_id, "archive_path": str(path), "sha256": decision.sha256}

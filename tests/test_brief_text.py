@@ -12,6 +12,7 @@ from app.brief.render import (
     canonical_text,
     extract_register,
     render_brief,
+    render_external,
     render_verbatim,
     replace_output,
 )
@@ -370,6 +371,33 @@ def test_a_pasted_prompt_records_the_rounds_that_did_happen() -> None:
 def test_a_pasted_prompt_that_cannot_be_parsed_is_refused(pasted: str, message: str) -> None:
     with pytest.raises(BriefParseError, match=message):
         render_verbatim(pasted, context())
+
+
+# ---- an externally supplied brief -----------------------------------------------------------
+
+
+def test_an_external_brief_is_kept_byte_for_byte_between_a_method_line_and_the_output() -> None:
+    text = render_external(PASTED, context(rounds=0))
+    assert text.startswith("Method: extern übergeben\n\n# Wie teuer ist der Rückbau?\n")
+    assert "\n\nBitte prüfe:\n1. Kosten je Anlage\n2. Dauer\n\n## Ausgabe\n" in text
+    assert canonical_text(text) == text
+    assert "Berichtssprache: Deutsch" in text
+
+
+def test_an_external_brief_in_english_says_so_in_english() -> None:
+    english = context(rounds=0, interview_language="en")
+    assert render_external(PASTED, english).startswith("Method: externally supplied\n")
+
+
+def test_an_external_brief_parses_and_refuses_what_cannot_be_parsed() -> None:
+    assert parse_brief(render_external(PASTED, context())).research_questions == (
+        "Kosten je Anlage",
+        "Dauer",
+    )
+    with pytest.raises(BriefParseError, match="title"):
+        render_external("Bitte analysiere.\n1. Kosten\n", context())
+    with pytest.raises(BriefParseError, match="numbered"):
+        render_external("# Titel\n\nNur Text.\n", context())
 
 
 # ---- parsing --------------------------------------------------------------------------------

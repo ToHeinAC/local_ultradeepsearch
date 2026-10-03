@@ -13,6 +13,7 @@ class Labels:
     rounds_many: str  # {n}
     unclear_method: str  # {items}
     verbatim: str
+    external: str  # the Method line of a brief written elsewhere
     audience: str
     decision: str
     background: str
@@ -49,6 +50,7 @@ DE = Labels(
     rounds_many="{n} Klärungsrunden",
     unclear_method="nicht geklärt: {items}",
     verbatim="Prompt wörtlich übernommen",
+    external="extern übergeben",
     audience="Zielgruppe",
     decision="Entscheidung",
     background="Hintergrund und Kontext",
@@ -109,6 +111,7 @@ EN = Labels(
     rounds_many="{n} clarification rounds",
     unclear_method="not clarified: {items}",
     verbatim="prompt installed verbatim",
+    external="externally supplied",
     audience="Audience",
     decision="Decision",
     background="Background and context",

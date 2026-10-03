@@ -118,6 +118,32 @@ class RunStore:
                 raise StaleBrief("the hash does not belong to the current brief")
             return self._create(session_id, sha256, brief_path, tier, summarize_model)
 
+    def create_external(
+        self, *, brief_sha256: str, brief_path: str, tier: str, settings_json: str
+    ) -> RunRow:
+        """A queued run for a brief that did not come from a session (an owner's file, an API
+        caller): its brief is archived already, its settings are given. Every call is a new run."""
+        now = self._db.now()
+        run_id = f"r-{now:%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+        with self._db.tx():
+            self._db.conn.execute(
+                "INSERT INTO runs (run_id, created_at, label, session_id, brief_sha256, "
+                "brief_path, tier, summarize_model, status, settings_json) "
+                "VALUES (?, ?, ?, NULL, ?, ?, ?, NULL, 'queued', ?)",
+                (
+                    run_id,
+                    now.isoformat(),
+                    "external",
+                    brief_sha256,
+                    brief_path,
+                    tier,
+                    settings_json,
+                ),
+            )
+        row = self.get_run(run_id)
+        assert row is not None
+        return row
+
     def _existing(self, session: SessionRow, sha256: str) -> RunRow | None:
         if session.run_id is None:
             return None

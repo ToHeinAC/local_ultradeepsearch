@@ -103,3 +103,29 @@ def test_the_settings_of_an_external_run_are_stored_with_it(db: Database) -> Non
     again = runs.get_run("r-1")
     assert again is not None
     assert again.settings_json == '{"report_language": "de"}'
+
+
+def test_a_run_without_a_session_is_created_from_an_external_brief(db: Database) -> None:
+    runs = RunStore(db)
+    row = runs.create_external(
+        brief_sha256="a" * 64,
+        brief_path="data/briefs/x.md",
+        tier="light",
+        settings_json='{"report_language": "de"}',
+    )
+    assert row.run_id.startswith("r-20261003-080000-")
+    assert (row.session_id, row.status, row.tier, row.summarize_model) == (
+        None,
+        "queued",
+        "light",
+        None,
+    )
+    assert (row.brief_sha256, row.brief_path) == ("a" * 64, "data/briefs/x.md")
+    assert row.settings_json == '{"report_language": "de"}'
+    assert runs.get_run(row.run_id) == row
+
+
+def test_two_external_runs_of_the_same_brief_are_two_runs(db: Database) -> None:
+    runs = RunStore(db)
+    args = {"brief_sha256": "a" * 64, "brief_path": "x.md", "tier": "light", "settings_json": "{}"}
+    assert runs.create_external(**args).run_id != runs.create_external(**args).run_id

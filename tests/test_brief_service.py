@@ -1,3 +1,4 @@
+import json
 import threading
 from pathlib import Path
 from typing import Any
@@ -388,6 +389,42 @@ def test_approval_creates_the_run_and_archives_the_exact_bytes(r: Rig) -> None:
     assert archive.read_bytes() == str(view.brief_text).encode("utf-8")
     assert done.archive_path == str(archive)
     assert run.brief_sha256 == view.brief_sha256
+
+
+def test_approval_freezes_the_effective_settings_into_the_run(r: Rig) -> None:
+    view = at_decision(r)
+    r.service.approve(view.session_id, str(view.brief_sha256), "full", summarize_model="gemma4:e2b")
+    run = r.parts.runs.run_for_session(view.session_id)
+    assert run is not None
+    assert json.loads(str(run.settings_json)) == {
+        "report_language": "de",  # the interview language: the owner chose none
+        "response_format": "structured",  # the recommendation
+        "template_id": "auto",
+        "interview_language": "de",
+        "tier": "full",
+        "summarize_model": "gemma4:e2b",
+    }
+
+
+def test_settings_the_owner_chose_are_the_ones_frozen(r: Rig) -> None:
+    view = at_decision(r)
+    changed = r.service.set_settings(
+        view.session_id,
+        report_language="en",
+        response_format="short",
+        template_id="literaturuebersicht",
+    )
+    r.service.approve(view.session_id, str(changed.brief_sha256), "light")
+    run = r.parts.runs.run_for_session(view.session_id)
+    assert run is not None
+    settings = json.loads(str(run.settings_json))
+    assert (settings["report_language"], settings["response_format"], settings["template_id"]) == (
+        "en",
+        "short",
+        "literaturuebersicht",
+    )
+    assert settings["interview_language"] == "de"
+    assert settings["summarize_model"] is None
 
 
 def test_tier_auto_applies_the_recommendation(tmp_path: Path) -> None:

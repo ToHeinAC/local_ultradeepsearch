@@ -197,3 +197,15 @@ def render_verbatim(pasted: str, ctx: BriefContext) -> str:
     labels = labels_for(ctx.interview_language)
     method = _method_line(labels, ctx.rounds, [], verbatim=True)
     return canonical_text("\n\n".join([method, body.rstrip("\n"), render_output(ctx)]))
+
+
+def render_external(brief: str, ctx: BriefContext) -> str:
+    """A brief written elsewhere (an API caller, a file), byte for byte, between a Method line that
+    says so and the Output section.
+
+    Raises `BriefParseError` if it has no title or numbered questions."""
+    body = canonical_text(brief)
+    parse_brief(body)
+    labels = labels_for(ctx.interview_language)
+    method = f"Method: {labels.external}"
+    return canonical_text("\n\n".join([method, body.rstrip("\n"), render_output(ctx)]))
