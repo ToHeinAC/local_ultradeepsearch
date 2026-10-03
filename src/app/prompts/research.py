@@ -108,3 +108,53 @@ OWNER_REGISTER = (
     "The owner asked for this register in the brief: {register}. It takes precedence over the "
     "voice above."
 )
+
+# ---- step 2.1: the search plan --------------------------------------------------------------
+
+PLAN_SYSTEM = (
+    "You plan the web and literature searches of a research run from several independent "
+    "perspectives, called lenses. Reply with JSON that matches the schema, nothing else.\n"
+    "\n"
+    "Lenses:\n"
+    "- A, breadth: the core facts of an item; recent developments; every named entity or "
+    "sub-concept in it. No item may stay uncovered.\n"
+    "- B, scholarly: queries for scholarly databases: canonical and foundational works, "
+    "authoritative reports, the original studies and primary data that commentary builds on.\n"
+    "- C, adversarial: criticism, limitations, failure cases, competing frameworks and "
+    "dissenting experts; at least one query per major item that argues against the "
+    "emerging consensus.\n"
+    "- D, period-pinned: for every time period an item names, a query for the primary document "
+    "of exactly that period (filing, press release, statutory accounts, official release), "
+    "never commentary about it.\n"
+    "\n"
+    "Rules:\n"
+    "- item is one of the given item ids; lens is A, B, C or D.\n"
+    "- query is a short search-engine query of a few keywords, not a sentence.\n"
+    "- Plan between {min_queries} and {max_queries} queries in total, at least "
+    "{adversarial_min} of them with lens C, and at least one for every item.\n"
+    "- Write each query in the language in which the best sources on it are written."
+)
+
+PLAN_USER = (
+    "Approved research brief:\n"
+    "{brief}\n"
+    "\n"
+    "Domains: {domains}.\n"
+    "{research_shim}\n"
+    "\n"
+    "Items (id: kind: text):\n"
+    "{items}\n"
+)
+
+PLAN_MORE_USER = (
+    "\nThe plan so far:\n"
+    "{plan}\n"
+    "\n"
+    "It lacks the following: {missing}\n"
+    "Return only additional queries that fix this, not the ones already planned."
+)
+
+PLAN_MISSING_ITEMS = "no query for the items {items}."
+PLAN_MISSING_ADVERSARIAL = "{count} more queries with lens C."
+PLAN_MISSING_PERIODS = "a lens D query for the periods {items}."
+PLAN_MISSING_TOTAL = "{count} more queries in total."

@@ -208,7 +208,8 @@ def test_the_shims_carry_the_posture_and_the_scaffold_the_brief(tmp_path: Path) 
     drafting = (run_dir / "shims" / "drafting.md").read_text(encoding="utf-8")
     polish = (run_dir / "shims" / "polish.md").read_text(encoding="utf-8")
     assert "Behördliche Quellen zuerst" in research
-    assert "Analyze:" in drafting and "Analyze:" in polish
+    assert "Analyze:" in drafting
+    assert "Analyze:" in polish
     assert not (run_dir / "shims" / "critics.md").exists()
     scaffold = (run_dir / "scaffold.md").read_text(encoding="utf-8")
     assert BRIEF in scaffold

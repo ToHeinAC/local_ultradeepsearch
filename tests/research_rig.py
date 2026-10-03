@@ -9,6 +9,7 @@ from typing import Any
 
 from support import make_settings
 
+from app.adapters.outbound.gateway import PreparedQuery
 from app.events import MemoryEventSink
 from app.llm.fakes import CallbackTransport, reply
 from app.llm.roles import build_registry
@@ -62,7 +63,7 @@ DRAFT: dict[str, Any] = {
     "levers": {
         "voice": "analyze",
         "voice_confidence": "low",
-        "domain_notes": "Behördliche Quellen zuerst; Genehmigungsrecht mit Stand der letzten Jahre.",
+        "domain_notes": "Behördliche Quellen zuerst; Genehmigungsrecht der letzten Jahre.",
         "inference_depth": "standard",
     },
 }
@@ -74,12 +75,56 @@ CLEAN_MATRIX: dict[str, Any] = {
 }
 
 
+def q(item: str, lens: str, text: str) -> dict[str, str]:
+    return {"item": item, "lens": lens, "query": text}
+
+
+PLAN: dict[str, Any] = {
+    "queries": [
+        q("Q1", "A", "Rückbau Forschungsreaktor Dauer"),
+        q("Q1", "B", "decommissioning research reactor duration study"),
+        q("Q1", "C", "Rückbau Forschungsreaktor Verzögerungen Kritik"),
+        q("Q2", "A", "Genehmigung Rückbau Atomgesetz"),
+        q("Q2", "B", "nuclear decommissioning licensing review"),
+        q("Q2", "C", "Genehmigung Rückbau Probleme Klage"),
+        q("E1", "A", "Forschungsreaktor Stilllegung Stand"),
+        q("E1", "C", "Forschungsreaktor Rückbau gescheitert"),
+        q("E1", "C", "Forschungsreaktor Stilllegung Mehrkosten"),
+        q("E1", "C", "Forschungsreaktor Rückbau Gegenargumente"),
+    ]
+}
+
+
+class FakePreparer:
+    """Stands in for the gateway's `prepare_query`: nothing leaves, every call is recorded.
+
+    ``rewrite`` maps a query to what the sanitizer would send; ``refuse`` maps a query to the
+    error the gateway would raise."""
+
+    def __init__(
+        self,
+        rewrite: dict[str, tuple[str, tuple[str, ...]]] | None = None,
+        refuse: dict[str, Exception] | None = None,
+    ) -> None:
+        self.rewrite = rewrite or {}
+        self.refuse = refuse or {}
+        self.calls: list[tuple[str, str]] = []
+
+    def prepare_query(self, query: str, *, step: str) -> PreparedQuery:
+        self.calls.append((query, step))
+        if query in self.refuse:
+            raise self.refuse[query]
+        sent, removed = self.rewrite.get(query, (query, ()))
+        return PreparedQuery(query, sent, removed)
+
+
 @dataclass
 class ResearchModels:
     """Scripted answers by schema (or prompt for free text), and a record of every call."""
 
     drafts: list[dict[str, Any]] = field(default_factory=lambda: [DRAFT])
     matrices: list[dict[str, Any]] = field(default_factory=lambda: [CLEAN_MATRIX])
+    plans: list[dict[str, Any]] = field(default_factory=lambda: [PLAN])
     errors: dict[str, Exception] = field(default_factory=lambda: {})
     calls: dict[str, int] = field(default_factory=lambda: {})
     prompts: dict[str, list[str]] = field(default_factory=lambda: {})
@@ -105,6 +150,8 @@ class ResearchModels:
             return self.drafts[min(number, len(self.drafts)) - 1]
         if kind == "CoverageMatrix":
             return self.matrices[min(number, len(self.matrices)) - 1]
+        if kind == "PlanDraft":
+            return self.plans[min(number, len(self.plans)) - 1]
         raise AssertionError(f"no scripted answer for {kind}")
 
 

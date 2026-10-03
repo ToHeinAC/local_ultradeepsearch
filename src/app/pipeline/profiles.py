@@ -97,6 +97,7 @@ class RunRules(BaseModel):
 
     coverage_matrix_max_iterations: int = Field(gt=0)
     thin_item_sources: int = Field(gt=0)  # fewer sources than this and an item is thin
+    plan_supplement_rounds: int = Field(ge=0)  # extra model calls to fill what a plan lacks
     wave2_queries_per_item: Range
     wave2_urls_per_item: int = Field(gt=0)
     search_max_results: int = Field(gt=0)

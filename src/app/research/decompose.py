@@ -22,12 +22,12 @@ from app.pipeline.profiles import RunRules
 from app.prompts import research as prompts
 from app.research.manifest import RunSettings
 from app.research.models import (
-    AtomicItem,
     CoverageMatrix,
     Decomposition,
     DecompositionDraft,
     MatrixRow,
     atomic_items,
+    render_items,
 )
 from app.research.report import fence_for
 from app.templates import MAX_SECTIONS, MIN_SECTIONS, ReportTemplate, is_reserved_heading
@@ -70,10 +70,6 @@ def clean_headings(raw: Sequence[str], questions: Sequence[str]) -> list[str]:
 
 def _numbered(lines: Sequence[str]) -> str:
     return "\n".join(f"{n}. {line}" for n, line in enumerate(lines, 1))
-
-
-def _items_block(items: Sequence[AtomicItem]) -> str:
-    return "\n".join(f"{item.id}: {item.kind}: {item.text}" for item in items)
 
 
 def _is_gap(row: MatrixRow, known: set[str]) -> bool:
@@ -182,7 +178,7 @@ class Decomposer:
 
     def _matrix(self, brief: str, decomposition: Decomposition) -> list[MatrixRow]:
         user = prompts.MATRIX_USER.format(
-            brief=brief, items=_items_block(atomic_items(decomposition))
+            brief=brief, items=render_items(atomic_items(decomposition))
         )
         messages: list[Message] = [
             {"role": "system", "content": prompts.MATRIX_SYSTEM},

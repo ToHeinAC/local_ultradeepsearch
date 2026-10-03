@@ -1,6 +1,7 @@
 """What the models return in Phase 2, and the artifacts built from it (validated by Pydantic,
 enforced via Ollama's `format`)."""
 
+from collections.abc import Sequence
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -112,6 +113,46 @@ def atomic_items(decomposition: Decomposition) -> list[AtomicItem]:
     return items
 
 
+def render_items(items: Sequence[AtomicItem]) -> str:
+    """One line per item, as the prompts show them: `Q1: question: text`."""
+    return "\n".join(f"{item.id}: {item.kind}: {item.text}" for item in items)
+
+
 def _period_text(period: TimePeriod) -> str:
     parts = [period.period, period.primary_source, period.issuer]
     return ", ".join(p for p in parts if p)
+
+
+Lens = Literal["A", "B", "C", "D"]  # breadth, scholarly, adversarial, period-pinned
+QueryKind = Literal["web", "scholarly"]
+
+
+class PlanQueryDraft(BaseModel):
+    item: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    lens: Lens
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class PlanDraft(BaseModel):
+    queries: list[PlanQueryDraft]
+
+
+class PlannedQuery(BaseModel):
+    """One line of the search plan. ``sent`` is exactly what would leave the machine."""
+
+    model_config = ConfigDict(frozen=True)
+
+    query_id: str
+    item: str  # atomic item id
+    lens: Lens
+    kind: QueryKind  # lens B goes to scholarly sources, every other lens to the web
+    original: str
+    sent: str  # empty while ``blocked``
+    removed_terms: list[str] = []
+    blocked: str | None = None  # why it cannot be sent: "denylist", "sanitizer_failed", ...
+
+
+class SearchPlan(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    queries: tuple[PlannedQuery, ...]

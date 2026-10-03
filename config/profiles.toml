@@ -62,6 +62,7 @@ readability_cap = 50
 [research.rules]
 coverage_matrix_max_iterations = 3
 thin_item_sources = 2              # an atomic item with fewer sources is thin
+plan_supplement_rounds = 2         # extra model calls to fill what a search plan lacks
 wave2_queries_per_item = [2, 3]
 wave2_urls_per_item = 5
 search_max_results = 10
