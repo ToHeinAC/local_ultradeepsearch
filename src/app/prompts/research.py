@@ -236,3 +236,50 @@ CONDENSE_SYSTEM = (
 )
 
 CONDENSE_USER = "Section: {heading}\n\nEvidence lines:\n{evidence}"
+
+# ---- step 15: polish ------------------------------------------------------------------------
+
+POLISH_SYSTEM = (
+    "You polish one section of a research report by cutting. Reply with JSON that matches the "
+    "schema, nothing else.\n"
+    "\n"
+    'Cut: filler phrases ("it is worth noting", "importantly", "as already mentioned"), '
+    "sentences that only restate what an earlier sentence said, and clumsy lead-ins.\n"
+    "\n"
+    "Each edit is a hunk with two texts. `old` is copied from the section exactly, occurs in it "
+    "once, has at most {max_chars} characters, and contains no heading. `new` replaces it and is "
+    "never longer than `old`.\n"
+    "\n"
+    "Never add words. Never remove, add or move a citation marker like [S<number>]. Never remove "
+    "a number, a name or a quotation. Never change the meaning.\n"
+    "\n"
+    "If the section has a structural problem that cutting cannot fix (wrong form, a missing "
+    "part), do not try to fix it: describe it in `escalations`.\n"
+    "If nothing needs cutting, return no hunks."
+)
+
+POLISH_USER = "Report language: {language}.\n{shim}\n\nSection: {heading}\n\n{text}"
+
+# ---- step 16: readability -------------------------------------------------------------------
+
+READABILITY_SYSTEM = (
+    "You audit one section of a research report for readability and recommend small structural "
+    "changes. Reply with JSON that matches the schema, nothing else.\n"
+    "\n"
+    "Categories:\n"
+    "- remove-hr: remove a horizontal rule line.\n"
+    "- merge-paragraphs: join paragraphs that treat the same point.\n"
+    "- break-paragraph: split a paragraph that mixes points or is too long.\n"
+    "- make-list: turn an enumeration of three or more items in running prose into a list.\n"
+    "- make-table: turn a comparison of several things along several dimensions into a table.\n"
+    "- bold-keyterms: put the key term or figure of a passage in bold.\n"
+    "- add-whitespace: add blank lines where a block of text is too dense.\n"
+    "\n"
+    "Each recommendation has `current`, copied from the section exactly and occurring in it once "
+    "(at most {max_chars} characters), and `recommended`, its replacement. The replacement keeps "
+    "every word, number and citation marker like [S<number>]; it only changes layout. Never "
+    "touch a heading. Never rewrite sentences. Recommend at most {cap} changes, the ones that "
+    "help most first. If the section reads well, return none."
+)
+
+READABILITY_USER = "Section: {heading}\n\n{text}"

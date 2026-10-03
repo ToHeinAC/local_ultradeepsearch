@@ -167,3 +167,27 @@ class CondensedEvidence(BaseModel):
     """Evidence that did not fit a section's prompt, condensed by the `summarize` role."""
 
     lines: list[CondensedLine]
+
+
+class PolishHunk(BaseModel):
+    old: str
+    new: str
+    reason: Text = ""
+
+
+class PolishProposal(BaseModel):
+    """Cut-only edits to one section, and what polish could not fix by cutting."""
+
+    hunks: list[PolishHunk] = []
+    escalations: list[Text] = []
+
+
+class ReadabilityItem(BaseModel):
+    category: str
+    current: str
+    recommended: str
+    rationale: Text = ""
+
+
+class ReadabilityProposal(BaseModel):
+    recommendations: list[ReadabilityItem] = []

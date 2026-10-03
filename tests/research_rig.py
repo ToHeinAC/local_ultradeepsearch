@@ -246,6 +246,11 @@ class ResearchModels:
     condensed: list[dict[str, Any]] | None = None
     crash_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call crashes
     thinks: dict[str, list[bool]] = field(default_factory=lambda: {})  # kind -> `think` per call
+    models_used: dict[str, set[str]] = field(default_factory=lambda: {})  # kind -> model tags
+    polishes: list[dict[str, Any]] = field(
+        default_factory=lambda: [{"hunks": [], "escalations": []}]
+    )
+    readabilities: list[dict[str, Any]] = field(default_factory=lambda: [{"recommendations": []}])
     errors: dict[str, Exception] = field(default_factory=lambda: {})
     calls: dict[str, int] = field(default_factory=lambda: {})
     prompts: dict[str, list[str]] = field(default_factory=lambda: {})
@@ -260,6 +265,7 @@ class ResearchModels:
             self.calls[kind] = self.calls.get(kind, 0) + 1
             number = self.calls[kind]
             self.thinks.setdefault(kind, []).append(request.think)
+            self.models_used.setdefault(kind, set()).add(request.model)
             self.prompts.setdefault(kind, []).append(
                 "\n".join(m["content"] for m in request.messages)
             )
@@ -288,6 +294,10 @@ class ResearchModels:
             return self.matrices[min(number, len(self.matrices)) - 1]
         if kind == "PlanDraft":
             return self.plans[min(number, len(self.plans)) - 1]
+        if kind == "PolishProposal":
+            return self.polishes[min(number, len(self.polishes)) - 1]
+        if kind == "ReadabilityProposal":
+            return self.readabilities[min(number, len(self.readabilities)) - 1]
         if kind == "CondensedEvidence":
             if self.condensed is not None:
                 return self.condensed[min(number, len(self.condensed)) - 1]
