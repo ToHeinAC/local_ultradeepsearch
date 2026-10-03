@@ -538,7 +538,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
   - **Gate:** G1–G12 with fix rounds.
   - **Export:** `report.docx` via pandoc (optional template `reference_docx`); `report.pdf` via
     pandoc `--pdf-engine=weasyprint` with a default CSS.
-  - **CLI:** `udr run --brief <file> --tier light --template <id>`, resumable.
+  - **CLI:** `udr run <run_id>` and `udr run --brief <file> --tier light --template <id>`; resumable.
   - **Templates** live in `templates/` (built-in) and `data/templates/` (uploads).
     - Front matter: `id`, `name`, `description`, `language`, `default_response_format`, optional
       `reference_docx`.
