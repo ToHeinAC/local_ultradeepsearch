@@ -38,3 +38,40 @@ citations = [40, 80]
 [response_formats.argumentative]
 words = [5000, 10000]
 citations = [80, 150]
+
+# Phase 2 (PRD 3.8, M5). Per tier: how much to search, fetch and read. Ranges are [low, high].
+[research.light]
+sources_min = 10
+planned_searches = [8, 20]
+adversarial_min = 5
+deduped_urls = [15, 30]        # URLs fetched in the first wave
+fetch_waves = [1, 2]
+must_read_notes = [8, 15]      # notes the sections are written from
+readability_cap = 50           # readability recommendations per report
+
+[research.full]
+sources_min = 45
+planned_searches = [40, 100]
+adversarial_min = 5
+deduped_urls = [60, 100]
+fetch_waves = [2, 3]
+must_read_notes = [20, 50]
+readability_cap = 50
+
+# Thresholds of both tiers.
+[research.rules]
+coverage_matrix_max_iterations = 3
+thin_item_sources = 2              # an atomic item with fewer sources is thin
+wave2_queries_per_item = [2, 3]
+wave2_urls_per_item = 5
+search_max_results = 10
+pack_context_fraction = 0.6        # share of the reason prompt budget given to evidence
+hunk_max_chars = 1200              # AD5: the `old` text of a hunk
+section_over_factor = 1.15         # a section this many times its word budget is compressed
+section_under_factor = 0.85        # ... below this many times it, expanded once
+gate_fix_rounds = 3
+citation_density_min = 9           # citations per 1000 body words (G4)
+quote_min_words = 5                # quoted spans of fewer words are not checked (G6)
+retraction_window_chars = 200      # G9
+language_samples = 3               # G12
+length_tolerance = [0.8, 1.2]      # G3: body words between 0.8 x low and 1.2 x high

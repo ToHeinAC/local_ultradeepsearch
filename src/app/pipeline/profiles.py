@@ -2,9 +2,9 @@
 
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 ResponseFormatName = Literal["short", "structured", "argumentative"]
 
@@ -66,6 +66,68 @@ class ResponseFormats(BaseModel):
         return getattr(self, name)
 
 
+def _positive_range(value: tuple[int, int]) -> tuple[int, int]:
+    low, high = value
+    if not 0 < low <= high:
+        raise ValueError(f"expected 0 < low <= high, got {low}..{high}")
+    return value
+
+
+Range = Annotated[tuple[int, int], AfterValidator(_positive_range)]
+
+
+class ResearchBudget(BaseModel):
+    """What one tier of Phase 2 may spend on searching, fetching and reading (PRD §3.8)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    sources_min: int = Field(gt=0)
+    planned_searches: Range
+    adversarial_min: int = Field(ge=0)
+    deduped_urls: Range
+    fetch_waves: Range
+    must_read_notes: Range
+    readability_cap: int = Field(gt=0)
+
+
+class RunRules(BaseModel):
+    """Thresholds shared by both tiers: coverage, evidence, edits and the ship gate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    coverage_matrix_max_iterations: int = Field(gt=0)
+    thin_item_sources: int = Field(gt=0)  # fewer sources than this and an item is thin
+    wave2_queries_per_item: Range
+    wave2_urls_per_item: int = Field(gt=0)
+    search_max_results: int = Field(gt=0)
+    pack_context_fraction: float = Field(gt=0, le=1)  # share of reason's prompt budget for evidence
+    hunk_max_chars: int = Field(gt=0)
+    section_over_factor: float = Field(gt=1)  # a section above this many times its words is long
+    section_under_factor: float = Field(gt=0, lt=1)  # ... and below this many, short
+    gate_fix_rounds: int = Field(gt=0)
+    citation_density_min: float = Field(gt=0)  # citations per 1000 body words (G4)
+    quote_min_words: int = Field(gt=0)  # shorter quoted spans are not checked (G6)
+    retraction_window_chars: int = Field(gt=0)  # G9
+    language_samples: int = Field(gt=0)  # G12
+    length_tolerance: tuple[float, float]  # G3: body words within low * a .. high * b
+
+    @field_validator("length_tolerance")
+    @classmethod
+    def _tolerance(cls, value: tuple[float, float]) -> tuple[float, float]:
+        below, above = value
+        if not 0 < below <= 1 <= above:
+            raise ValueError(f"expected 0 < below <= 1 <= above, got {below}, {above}")
+        return value
+
+
+class ResearchProfiles(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    light: ResearchBudget
+    full: ResearchBudget
+    rules: RunRules
+
+
 class Profiles(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -75,9 +137,18 @@ class Profiles(BaseModel):
     response_formats: ResponseFormats
 
 
+def _raw(config_dir: Path) -> dict[str, Any]:
+    return tomllib.loads((config_dir / "profiles.toml").read_text(encoding="utf-8"))
+
+
 def _load(config_dir: Path) -> Profiles:
-    raw = tomllib.loads((config_dir / "profiles.toml").read_text(encoding="utf-8"))
+    raw = _raw(config_dir)
+    raw.pop("research", None)  # validated on its own: Phase 1 does not need it
     return Profiles.model_validate(raw)
+
+
+def _load_research(config_dir: Path) -> ResearchProfiles:
+    return ResearchProfiles.model_validate(_raw(config_dir).get("research", {}))
 
 
 def load_profile(name: str, config_dir: Path) -> Profile:
@@ -94,3 +165,15 @@ def load_phase1(config_dir: Path) -> Phase1Limits:
 
 def load_response_formats(config_dir: Path) -> ResponseFormats:
     return _load(config_dir).response_formats
+
+
+def load_research_budget(name: str, config_dir: Path) -> ResearchBudget:
+    """The Phase-2 budget of tier ``name`` ("light" or "full")."""
+    research = _load_research(config_dir)
+    if name not in ("light", "full"):
+        raise ValueError(f"unknown profile {name!r}")
+    return research.light if name == "light" else research.full
+
+
+def load_run_rules(config_dir: Path) -> RunRules:
+    return _load_research(config_dir).rules

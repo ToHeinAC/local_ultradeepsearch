@@ -19,6 +19,20 @@ class RunRow:
     summarize_model: str | None
     status: str
     created_at: str
+    settings_json: str | None  # report settings of a run without a session (external brief)
+
+
+RUN_STATUSES = ("queued", "running", "awaiting_plan_approval", "done", "blocked", "failed")
+# `created` is what a vault gives a run that no brief approved (tests and tools).
+_ALLOWED_STATUS: dict[str, set[str]] = {
+    "created": {"queued", "running", "failed"},
+    "queued": {"running", "failed"},
+    "running": {"awaiting_plan_approval", "done", "blocked", "failed"},
+    "awaiting_plan_approval": {"running", "failed"},
+    "failed": {"running"},
+    "done": set(),
+    "blocked": set(),
+}
 
 
 def _run(row: sqlite3.Row) -> RunRow:
@@ -31,6 +45,7 @@ def _run(row: sqlite3.Row) -> RunRow:
         summarize_model=row["summarize_model"],
         status=row["status"],
         created_at=row["created_at"],
+        settings_json=row["settings_json"],
     )
 
 
@@ -43,6 +58,30 @@ class RunStore:
 
     def run_for_session(self, session_id: str) -> RunRow | None:
         return self._fetch("session_id = ?", session_id)
+
+    def set_status(self, run_id: str, status: str) -> None:
+        """Move a run to ``status``. Setting the current status again is a no-op; a finished run
+        (`done`, `blocked`) never moves again, a `failed` one may run again."""
+        if status not in RUN_STATUSES:
+            raise WrongState(f"unknown status {status!r}")
+        with self._db.tx():
+            row = self._db.conn.execute(
+                "SELECT status FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise NotFound(run_id)
+            current = row["status"]
+            if current == status:
+                return
+            if status not in _ALLOWED_STATUS.get(current, set()):
+                raise WrongState(f"{current} -> {status}")
+            self._db.conn.execute("UPDATE runs SET status = ? WHERE run_id = ?", (status, run_id))
+
+    def set_settings(self, run_id: str, settings_json: str) -> None:
+        with self._db.tx():
+            self._db.conn.execute(
+                "UPDATE runs SET settings_json = ? WHERE run_id = ?", (settings_json, run_id)
+            )
 
     def _fetch(self, where: str, value: str) -> RunRow | None:
         with self._db.lock:

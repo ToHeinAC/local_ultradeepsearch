@@ -142,8 +142,21 @@ ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'created';
 CREATE UNIQUE INDEX runs_session ON runs(session_id) WHERE session_id IS NOT NULL;
 """
 
+MIGRATION_3 = """
+CREATE TABLE searches (
+  run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+  query_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  wave INTEGER NOT NULL,
+  results_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, query_id, source)
+);
+ALTER TABLE runs ADD COLUMN settings_json TEXT;
+"""
+
 # Later milestones append their own migrations; never edit one that has shipped.
-MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2]
+MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3]
 
 
 WAL_RETRY_S = 5.0
