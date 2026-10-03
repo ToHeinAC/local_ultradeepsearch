@@ -51,13 +51,13 @@ def kind_of(lens: str) -> QueryKind:
 
 
 def prepare(
-    preparer: QueryPreparer, query_id: str, item: str, lens: Lens, text: str
+    preparer: QueryPreparer, query_id: str, item: str, lens: Lens, text: str, step: str = STEP
 ) -> PlannedQuery:
     """One plan line, sent through the gateway's denylist and sanitizer. A refused query is kept,
     marked blocked, so the owner sees it and must edit or delete it."""
     sent, removed, blocked = "", [], None
     try:
-        prepared = preparer.prepare_query(text, step=STEP)
+        prepared = preparer.prepare_query(text, step=step)
         sent, removed = prepared.sent, list(prepared.removed_terms)
     except DenylistBlocked:
         blocked = "denylist"
@@ -140,7 +140,7 @@ def trim_queries(
     return kept
 
 
-def _normalized(
+def normalized_queries(
     raw: Sequence[PlanQueryDraft], known: set[str], seen: set[str]
 ) -> list[PlanQueryDraft]:
     """Queries of known items with collapsed whitespace, without repeats of anything in ``seen``."""
@@ -181,13 +181,13 @@ class Planner:
             research_shim=research_shim,
             items=render_items(items),
         )
-        queries = _normalized(self._ask(user, think=True).queries, known, seen)
+        queries = normalized_queries(self._ask(user, think=True).queries, known, seen)
         for _ in range(self._rules.plan_supplement_rounds):
             missing = self._missing(queries, items)
             if not missing:
                 break
             more = self._ask(user + self._more(queries, missing), think=False)
-            queries += _normalized(more.queries, known, seen)
+            queries += normalized_queries(more.queries, known, seen)
         queries += self._fallback(queries, items)
         queries = trim_queries(
             queries,

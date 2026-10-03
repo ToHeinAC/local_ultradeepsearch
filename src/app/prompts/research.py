@@ -158,3 +158,27 @@ PLAN_MISSING_ITEMS = "no query for the items {items}."
 PLAN_MISSING_ADVERSARIAL = "{count} more queries with lens C."
 PLAN_MISSING_PERIODS = "a lens D query for the periods {items}."
 PLAN_MISSING_TOTAL = "{count} more queries in total."
+
+# ---- step 2: the second wave for thin items -------------------------------------------------
+
+WAVE2_SYSTEM = (
+    "You plan follow-up searches for a research run whose first searches left some items "
+    "thinly covered. Reply with JSON that matches the schema, nothing else.\n"
+    "\n"
+    "For each of the given items write between {min_queries} and {max_queries} new queries that "
+    "approach it differently from the queries already tried: other terms, another language, "
+    "a named authority, a primary document. Never repeat a query already tried. Each query is "
+    "a short search-engine query of a few keywords. lens is A (breadth), B (scholarly), C "
+    "(adversarial) or D (period-pinned)."
+)
+
+WAVE2_USER = (
+    "Approved research brief:\n"
+    "{brief}\n"
+    "\n"
+    "Thin items (id: kind: text):\n"
+    "{items}\n"
+    "\n"
+    "Queries already tried for them:\n"
+    "{tried}\n"
+)

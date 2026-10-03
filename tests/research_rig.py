@@ -3,6 +3,7 @@ parts of a research run wired on fakes."""
 
 import json
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from support import make_settings
 
 from app.adapters.outbound.gateway import PreparedQuery
+from app.adapters.outbound.types import ScholarlyRecord, SearchHit
 from app.events import MemoryEventSink
 from app.llm.fakes import CallbackTransport, reply
 from app.llm.roles import build_registry
@@ -116,6 +118,53 @@ class FakePreparer:
             raise self.refuse[query]
         sent, removed = self.rewrite.get(query, (query, ()))
         return PreparedQuery(query, sent, removed)
+
+
+class SearchCrash(BaseException):
+    """A crash that no `except Exception` may swallow, like a power cut."""
+
+
+class FakeSearcher:
+    """Stands in for the gateway's searches: answers by sent query and records every call as
+    `(source, sent)`. ``fail`` maps `(source, sent)` to the error to raise; ``crash_at`` raises a
+    `SearchCrash` on that (1-based) call."""
+
+    def __init__(
+        self,
+        web: dict[str, list[SearchHit]] | None = None,
+        scholarly: dict[tuple[str, str], list[ScholarlyRecord]] | None = None,
+        fail: dict[tuple[str, str], Exception] | None = None,
+        crash_at: int | None = None,
+    ) -> None:
+        self.web = web or {}
+        self.scholarly = scholarly or {}
+        self.fail = fail or {}
+        self.crash_at = crash_at
+        self.calls: list[tuple[str, str]] = []
+
+    def _enter(self, source: str, sent: str) -> None:
+        self.calls.append((source, sent))
+        if self.crash_at == len(self.calls):
+            raise SearchCrash(f"crash at search {len(self.calls)}")
+        if (source, sent) in self.fail:
+            raise self.fail[(source, sent)]
+
+    def search_web(
+        self,
+        prepared: PreparedQuery,
+        *,
+        step: str,
+        include_domains: Sequence[str] = (),
+        max_results: int = 10,
+    ) -> list[SearchHit]:
+        self._enter("web", prepared.sent)
+        return self.web.get(prepared.sent, [])
+
+    def search_scholarly(
+        self, prepared: PreparedQuery, *, step: str, source: str, max_results: int = 10
+    ) -> list[ScholarlyRecord]:
+        self._enter(source, prepared.sent)
+        return self.scholarly.get((source, prepared.sent), [])
 
 
 @dataclass
