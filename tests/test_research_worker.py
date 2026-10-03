@@ -13,9 +13,8 @@ from app.research.worker import WorkerLock
 
 def test_the_lock_is_exclusive_and_released_on_exit(tmp_path: Path) -> None:
     path = tmp_path / "worker.lock"
-    with WorkerLock(path):
-        with pytest.raises(WorkerBusy, match="another run"), WorkerLock(path):
-            pass
+    with WorkerLock(path), pytest.raises(WorkerBusy, match="another run"), WorkerLock(path):
+        pass
     holder = WorkerLock(path)
     with holder:
         pass
