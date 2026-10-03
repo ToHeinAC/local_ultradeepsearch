@@ -16,7 +16,7 @@ EM_DASH = chr(0x2014)
 MAX_PER_BRACKET = 3
 NO_SOURCES_EN = "No sources were cited."
 _BRACKET = r"\[\s*S\d+(?:\s*[,;]\s*S\d+)*\s*\]"
-_GROUP = re.compile(rf"( ?)((?:{_BRACKET})(?:\s*{_BRACKET})*)")
+CITATION_GROUP = re.compile(rf"( ?)((?:{_BRACKET})(?:\s*{_BRACKET})*)")
 _KEY = re.compile(r"S\d+")
 _BACKTICKS = re.compile(r"`+")
 
@@ -70,6 +70,11 @@ def source_from_note(note: Note) -> ReportSource:
     )
 
 
+def cited_keys(text: str) -> list[str]:
+    """Every evidence key cited in ``text`` (inside brackets), in order, repeats included."""
+    return [key for match in CITATION_GROUP.finditer(text) for key in _KEY.findall(match[2])]
+
+
 def appendix_heading(language: str) -> str:
     return (
         f"Anhang A {EM_DASH} Recherche-Brief"
@@ -114,7 +119,7 @@ class _Numbering:
         self.dropped: dict[str, None] = {}
 
     def convert(self, text: str) -> str:
-        return _GROUP.sub(lambda match: self._group(match), text)
+        return CITATION_GROUP.sub(lambda match: self._group(match), text)
 
     def _group(self, match: re.Match[str]) -> str:
         found = list(dict.fromkeys(_KEY.findall(match[2])))

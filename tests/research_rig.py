@@ -7,6 +7,7 @@ import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from support import make_settings
@@ -20,6 +21,9 @@ from app.llm.service import LLMService
 from app.llm.types import ChatReply, ChatRequest, Endpoint
 from app.pipeline.profiles import load_research_budget, load_response_formats, load_run_rules
 from app.pipeline.urls import dedup_key
+from app.research.draft import Drafter
+from app.research.evidence import EvidenceKeys, PackBuilder
+from app.research.fixes_model import ModelFixes
 from app.research.manifest import RunSettings
 from app.store.models import NewClaim, NewSource, Note, SourceMeta
 from app.store.vault import Vault
@@ -245,6 +249,7 @@ class ResearchModels:
     texts: dict[str, str] = field(default_factory=lambda: {})  # section heading -> answer
     condensed: list[dict[str, Any]] | None = None
     crash_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call crashes
+    answers: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: {})  # by schema title
     thinks: dict[str, list[bool]] = field(default_factory=lambda: {})  # kind -> `think` per call
     models_used: dict[str, set[str]] = field(default_factory=lambda: {})  # kind -> model tags
     polishes: list[dict[str, Any]] = field(
@@ -280,14 +285,17 @@ class ResearchModels:
     def _text(self, request: ChatRequest) -> str:
         """A section: the scripted text of its heading, else German text of the asked length."""
         user = request.messages[-1]["content"]
-        heading = re.search(r"Section to write: (.+)", user)
-        words = re.search(r"Write about (\d+) words", user)
+        heading = re.search(r"Section(?: to write)?: (.+)", user)
+        words = re.search(r"about (\d+) words", user)
         name = heading[1] if heading else ""
         if name in self.texts:
             return self.texts[name]
         return german_text(int(words[1]) if words else 50)
 
     def _answer(self, kind: str, number: int) -> dict[str, Any]:
+        if kind in self.answers:
+            scripted = self.answers[kind]
+            return scripted[min(number, len(scripted)) - 1]
         if kind == "DecompositionDraft":
             return self.drafts[min(number, len(self.drafts)) - 1]
         if kind == "CoverageMatrix":
@@ -317,3 +325,51 @@ def llm(models: ResearchModels, events: MemoryEventSink | None = None) -> LLMSer
         timeout_s=5,
         sleep=lambda _s: None,
     )
+
+
+@dataclass
+class Wired:
+    """The model-driven parts of Phase 2 over a vault with seeded sources."""
+
+    vault: Vault
+    ids: list[str]
+    models: ResearchModels
+    events: MemoryEventSink
+    keys: EvidenceKeys
+    packs: PackBuilder
+    drafter: Drafter
+    fixes: ModelFixes
+
+
+def wired(
+    tmp_path: Path,
+    models: ResearchModels | None = None,
+    *,
+    notes: int = 2,
+    prompt_chars: int = 40_000,
+) -> Wired:
+    """A vault with ``notes`` seeded sources, evidence keys, packs, a drafter and the fixes."""
+    vault = Vault(tmp_path / "udr.sqlite", "run-a")
+    ids = [
+        seed_note(
+            vault,
+            n,
+            title=f"Quelle {n}",
+            body="Der Rückbau dauert zehn Jahre.",
+            summary=f"Zusammenfassung {n}",
+            claims=[claim("Der Rückbau dauert zehn Jahre.", "Der Rückbau dauert zehn Jahre.")],
+        ).note_id
+        for n in range(1, notes + 1)
+    ]
+    events = MemoryEventSink()
+    models = models or ResearchModels()
+    service = llm(models, events)
+    keys = EvidenceKeys(tmp_path / "keys.json")
+    packs = PackBuilder(vault, keys, service, RULES, events)
+    drafter = Drafter(
+        service, packs, keys, RULES, events, prompt_chars=prompt_chars, condense_chars=20_000
+    )
+    fixes = ModelFixes(
+        service, packs, keys, RULES, events, prompt_chars=prompt_chars, condense_chars=20_000
+    )
+    return Wired(vault, ids, models, events, keys, packs, drafter, fixes)

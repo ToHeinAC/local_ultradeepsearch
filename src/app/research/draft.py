@@ -8,6 +8,7 @@ states the gap, so nothing is invented.
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.brief.labels import language_name
@@ -49,6 +50,12 @@ def words_per_section(fmt: FormatRange, sections: int) -> int:
     return max(1, round((low + high) / 2 / max(1, sections)))
 
 
+def pack_budget(prompt_chars: int, rules: RunRules, prompt_length: int) -> int:
+    """Characters of evidence a prompt may carry: a share of the model's prompt budget, less what
+    the rest of the prompt already uses."""
+    return int(prompt_chars * rules.pack_context_fraction) - prompt_length
+
+
 def clean_section(text: str) -> str:
     """Model output made fit for a section: no code-fence wrapper, no front matter, no heading
     lines (the structure is code's), no runs of blank lines."""
@@ -59,6 +66,19 @@ def clean_section(text: str) -> str:
     result = _FRONT_MATTER.sub("", result, count=1)
     result = _HEADING_LINE.sub("", result)
     return _BLANKS.sub("\n\n", result).strip()
+
+
+@dataclass(frozen=True)
+class DraftPlan:
+    """Everything the drafting of one report needs besides the models and the evidence."""
+
+    title: str
+    questions: tuple[str, ...]
+    sections: tuple[Section, ...]
+    language: str
+    fmt: FormatRange
+    must_read: tuple[str, ...]
+    shim: str
 
 
 class Drafter:
@@ -81,74 +101,55 @@ class Drafter:
         self._prompt_chars = prompt_chars
         self._condense_chars = condense_chars
 
-    def draft_all(
-        self,
-        run_dir: Path,
-        *,
-        title: str,
-        questions: Sequence[str],
-        sections: Sequence[Section],
-        language: str,
-        fmt: FormatRange,
-        must_read: Sequence[str],
-        shim: str,
-    ) -> None:
+    def draft_all(self, run_dir: Path, plan: DraftPlan) -> None:
         """Write every section that has no file yet. A model failure propagates; what was saved
         stays saved."""
-        words = words_per_section(fmt, len(sections))
-        for index, section in enumerate(sections, 1):
-            if load_section(run_dir, index) is not None:
-                continue
-            user = self._user(title, questions, sections, index, language, words, shim)
-            text = self._section(section, questions, must_read, user, language)
-            save_section(run_dir, index, text)
+        for index in range(1, len(plan.sections) + 1):
+            if load_section(run_dir, index) is None:
+                self.write(run_dir, plan, index)
 
-    def _user(
-        self,
-        title: str,
-        questions: Sequence[str],
-        sections: Sequence[Section],
-        index: int,
-        language: str,
-        words: int,
-        shim: str,
-    ) -> str:
+    def redraft_in_language(self, run_dir: Path, plan: DraftPlan, index: int) -> None:
+        """Write section ``index`` again, told to use the report language (gate fix for G12)."""
+        language = language_name(plan.language, "en")
+        self.write(run_dir, plan, index, prompts.REDRAFT_LANGUAGE.format(language=language))
+
+    def write(self, run_dir: Path, plan: DraftPlan, index: int, note: str = "") -> None:
+        """Draft section ``index`` from its own evidence and save it, replacing any earlier one."""
+        section = plan.sections[index - 1]
+        user = self._user(plan, index, note)
+        save_section(run_dir, index, self._section(section, plan, user))
+
+    def _user(self, plan: DraftPlan, index: int, note: str) -> str:
         outline = "\n".join(
-            f"{'>' if n == index else '-'} {s.heading}" for n, s in enumerate(sections, 1)
+            f"{'>' if n == index else '-'} {s.heading}" for n, s in enumerate(plan.sections, 1)
         )
-        section = sections[index - 1]
+        section = plan.sections[index - 1]
         return prompts.DRAFT_USER.format(
-            title=title,
-            questions="\n".join(f"{n}. {q}" for n, q in enumerate(questions, 1)),
-            language=language_name(language, "en"),
-            shim=shim.strip(),
+            title=plan.title,
+            questions="\n".join(f"{n}. {q}" for n, q in enumerate(plan.questions, 1)),
+            language=language_name(plan.language, "en"),
+            shim=plan.shim.strip(),
             outline=outline,
             heading=section.heading,
             instructions=section.instructions or prompts.NO_INSTRUCTIONS,
-            words=words,
+            words=words_per_section(plan.fmt, len(plan.sections)),
+            note=note.rstrip(),
             pack="{pack}",
         )
 
-    def _section(
-        self,
-        section: Section,
-        questions: Sequence[str],
-        must_read: Sequence[str],
-        user: str,
-        language: str,
-    ) -> str:
-        overhead = len(prompts.DRAFT_SYSTEM) + len(user)
-        budget = int(self._prompt_chars * self._rules.pack_context_fraction) - overhead
+    def _section(self, section: Section, plan: DraftPlan, user: str) -> str:
+        budget = pack_budget(self._prompt_chars, self._rules, len(prompts.DRAFT_SYSTEM) + len(user))
         pack = self._packs.build(
             section=section.heading,
-            query=section_query(section.heading, section.instructions, questions),
-            must_read=must_read,
+            query=section_query(section.heading, section.instructions, plan.questions),
+            must_read=plan.must_read,
             budget_chars=budget,
             condense_chars=self._condense_chars,
         )
+        gap = NO_EVIDENCE.get(plan.language, NO_EVIDENCE["en"])
         if not pack.text:
             self._events.emit("section_without_evidence", level="warning", section=section.heading)
-            return NO_EVIDENCE.get(language, NO_EVIDENCE["en"])
+            return gap
         messages: list[Message] = [
             {"role": "system", "content": prompts.DRAFT_SYSTEM},
             {"role": "user", "content": user.replace("{pack}", pack.text)},
@@ -157,4 +158,4 @@ class Drafter:
         if text:
             return text
         self._events.emit("section_empty", level="warning", section=section.heading)
-        return NO_EVIDENCE.get(language, NO_EVIDENCE["en"])
+        return gap

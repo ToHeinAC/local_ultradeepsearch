@@ -1,6 +1,7 @@
 """Step 10 (PRD M5, AD4): the report written one section at a time from its own evidence."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from research_rig import (
@@ -20,13 +21,14 @@ from app.pipeline.profiles import FormatRange
 from app.research.draft import (
     NO_EVIDENCE,
     Drafter,
+    DraftPlan,
     clean_section,
     sections_of,
     words_per_section,
 )
 from app.research.evidence import EvidenceKeys, PackBuilder
 from app.research.models import Decomposition, Levers
-from app.research.sections import load_section
+from app.research.sections import load_section, save_section
 from app.store.vault import Vault
 from app.templates import Section
 
@@ -59,24 +61,32 @@ def rig(tmp_path: Path, models: ResearchModels | None = None, *, notes: int = 2)
     return drafter, ids, models, events, keys
 
 
+def plan_of(
+    ids: list[str],
+    sections: list[Section] | None = None,
+    *,
+    language: str = "de",
+    fmt: FormatRange = FORMATS.structured,
+) -> DraftPlan:
+    return DraftPlan(
+        title="Der Titel",
+        questions=tuple(QUESTIONS),
+        sections=tuple(sections or TECH.sections),
+        language=language,
+        fmt=fmt,
+        must_read=tuple(ids),
+        shim=SHIM,
+    )
+
+
 def draft(
     drafter: Drafter,
     tmp_path: Path,
     ids: list[str],
     sections: list[Section] | None = None,
-    **kw: object,
+    **kw: Any,
 ) -> None:
-    fmt = kw.get("fmt", FORMATS.structured)
-    drafter.draft_all(
-        tmp_path / "run",
-        title="Der Titel",
-        questions=QUESTIONS,
-        sections=sections or list(TECH.sections),
-        language=str(kw.get("language", "de")),
-        fmt=fmt,  # type: ignore[arg-type]
-        must_read=ids,
-        shim=SHIM,
-    )
+    drafter.draft_all(tmp_path / "run", plan_of(ids, sections, **kw))
 
 
 def test_the_word_budget_is_the_middle_of_the_range_split_over_the_sections() -> None:
@@ -171,6 +181,19 @@ def test_a_crash_between_sections_loses_only_the_section_in_flight(tmp_path: Pat
     draft(again, tmp_path, ids2)
     assert models.count("text") == 4  # the crashed one and the three after it
     assert load_section(run_dir, 6) is not None
+
+
+def test_a_section_can_be_written_again_in_the_report_language(tmp_path: Path) -> None:
+    models = ResearchModels(texts={"Management Summary": "Ein neuer deutscher Text [S1]."})
+    drafter, ids, _, _, _ = rig(tmp_path, models)
+    run_dir = tmp_path / "run"
+    save_section(run_dir, 1, "An English text [S1].")
+    drafter.redraft_in_language(run_dir, plan_of(ids), 1)
+    assert load_section(run_dir, 1) == "Ein neuer deutscher Text [S1]."
+    prompt = models.prompts["text"][0]
+    assert "was not written in German" in prompt
+    assert "in no other language" in prompt
+    assert models.count("text") == 1
 
 
 def test_a_model_failure_propagates_and_keeps_what_was_saved(tmp_path: Path) -> None:

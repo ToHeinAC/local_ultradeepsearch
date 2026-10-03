@@ -182,6 +182,14 @@ class PolishProposal(BaseModel):
     escalations: list[Text] = []
 
 
+class CitationProposal(PolishProposal):
+    """Hunks that add evidence keys to sentences (gate fix G4)."""
+
+
+class LeakProposal(PolishProposal):
+    """Hunks that reword sentences containing pipeline vocabulary (gate fix G7)."""
+
+
 class ReadabilityItem(BaseModel):
     category: str
     current: str

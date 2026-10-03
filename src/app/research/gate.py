@@ -12,13 +12,13 @@ from app.brief.labels import sources_heading
 from app.pipeline.profiles import RunRules
 from app.pipeline.urls import dedup_key
 from app.research.language import detect_code, language_samples
+from app.research.leakage import leaks
 from app.research.markdown import (
     appendix_fence,
     body_of,
     body_words,
     citation_numbers,
     h2_list,
-    outside_fences,
     sources_entries,
 )
 from app.research.quotes import quote_failures
@@ -36,26 +36,6 @@ FULL_ARTIFACTS = LIGHT_ARTIFACTS | {
     "cite-check-findings.json",
     "cite-check-patch-log.json",
 }
-LEAKAGE = (
-    r"\bLocus \d+",
-    r"\bTension \d+",
-    r"comparisons\.md",
-    r"\binterim\b",
-    r"cross-locus",
-    r"scaffold",
-    r"hyperresearch",
-    r"\[\[",
-    r"<think>",
-)
-SCAFFOLD_HEADERS = (
-    "user prompt",
-    "run config",
-    "modality",
-    "tier rationale",
-    "wrapper requirements",
-)
-_LEAK = re.compile("|".join(LEAKAGE), re.IGNORECASE)
-_HEADER = re.compile(r"^#{1,6}\s+(?P<title>.+?)\s*$")
 _ENTRY_URL = re.compile(r"(https?://\S+?)\s+\((?:abgerufen|accessed) \d{4}-\d{2}-\d{2}\)\s*$")
 _CITATION_GROUP = re.compile(r"\[\d+(?:\s*,\s*\d+)*\]")
 _ACKNOWLEDGED = re.compile(r"retract|zurückgezogen", re.IGNORECASE)
@@ -213,19 +193,6 @@ def g6_quotes(inp: GateInput) -> CheckResult:
     )
     detail = "; ".join(f"{f.reason}: {f.open}{f.span}{f.close}" for f in failures)
     return _result("G6", "quote-integrity", not failures, detail)
-
-
-def leaks(text: str) -> list[str]:
-    """What in ``text`` (without its title line) belongs to the pipeline, not to a report."""
-    found: list[str] = []
-    if text.lstrip().startswith("---"):
-        found.append("front matter")
-    for _, line in outside_fences(text):
-        header = _HEADER.match(line)
-        if header and header["title"].casefold() in SCAFFOLD_HEADERS:
-            found.append(f"scaffold header: {line.strip()}")
-    found += [f"vocabulary: {m[0]}" for m in _LEAK.finditer(text)]
-    return found
 
 
 def g7_leakage(inp: GateInput) -> CheckResult:

@@ -219,9 +219,14 @@ DRAFT_USER = (
     "Section to write: {heading}\n"
     "Section instructions: {instructions}\n"
     "Write about {words} words.\n"
-    "\n"
+    "{note}\n"
     "Evidence:\n"
     "{pack}"
+)
+
+REDRAFT_LANGUAGE = (
+    "The previous draft of this section was not written in {language}. Write the whole "
+    "section in {language}, and in no other language.\n"
 )
 
 NO_INSTRUCTIONS = "none; cover what the heading says and what the research questions require."
@@ -283,3 +288,64 @@ READABILITY_SYSTEM = (
 )
 
 READABILITY_USER = "Section: {heading}\n\n{text}"
+
+# ---- the ship gate's model-made fixes -------------------------------------------------------
+
+COMPRESS_SYSTEM = (
+    "You shorten one section of a research report. Keep every citation marker like "
+    "[S<number>] that supports a statement you keep. Keep every number and every quotation you "
+    "keep exactly as it is. Drop the least important detail first. Never add a fact, a marker or "
+    "a quotation that is not in the text. Write plain Markdown, in the language of the text, "
+    "without a heading. Reply with the shortened section only."
+)
+
+COMPRESS_USER = "Shorten this section to about {words} words.\n\nSection: {heading}\n\n{text}"
+
+EXPAND_USER = (
+    "Report language: {language}.\n"
+    "{shim}\n"
+    "\n"
+    "Section: {heading}\n"
+    "Section instructions: {instructions}\n"
+    "\n"
+    "Current text of the section:\n"
+    "{text}\n"
+    "\n"
+    "Extend the section to about {words} words with facts from the evidence that the text does "
+    "not use yet. Keep what it says and every citation key already in it.\n"
+    "\n"
+    "Evidence:\n"
+    "{pack}"
+)
+
+CITE_SYSTEM = (
+    "You add missing citations to one section of a research report. Reply with JSON that "
+    "matches the schema, nothing else.\n"
+    "\n"
+    "Each hunk has two texts. `old` is a sentence, or part of one, copied exactly from the "
+    "section, occurring in it once, with at most {max_chars} characters. `new` is the same text "
+    "with one or more evidence keys like [S<number>] inserted after the statements that the "
+    "evidence supports. Change nothing else: not a word, not a number. Use only the keys "
+    "listed. Skip statements that none of the listed sources supports."
+)
+
+CITE_USER = (
+    "Section: {heading}\n"
+    "\n"
+    "Keys you may use (key: source: summary):\n"
+    "{keys}\n"
+    "\n"
+    "Section text:\n"
+    "{text}"
+)
+
+LEAK_SYSTEM = (
+    "You clean one section of a research report of words that belong to the process of making "
+    "it, not to the report. Reply with JSON that matches the schema, nothing else.\n"
+    "\n"
+    "Each hunk has two texts. `old` is one of the listed sentences, copied exactly. `new` is the "
+    "sentence reworded without the flagged words, keeping its meaning and its citation markers "
+    "like [S<number>], or empty if the sentence says nothing without them. Never add a fact."
+)
+
+LEAK_USER = "Section: {heading}\n\nSentences to fix:\n{sentences}\n\nSection text:\n{text}"
