@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 from app.text import contains_quote
 
-# (opening, closing) code points: „…“ “…” "…" «…» »…« ‚…‘
+# (opening, closing) code points: German double, English double, ASCII, guillemets both ways,
+# German single
 _PAIRS = (
     (0x201E, 0x201C),
     (0x201C, 0x201D),

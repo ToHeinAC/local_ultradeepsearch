@@ -7,7 +7,9 @@ from langdetect import (  # pyright: ignore[reportMissingTypeStubs]
     DetectorFactory,
     detect,  # pyright: ignore[reportUnknownVariableType]
 )
-from langdetect.lang_detect_exception import LangDetectException  # pyright: ignore[reportMissingTypeStubs]
+from langdetect.lang_detect_exception import (  # pyright: ignore[reportMissingTypeStubs]
+    LangDetectException,
+)
 
 from app.research.markdown import strip_citations
 

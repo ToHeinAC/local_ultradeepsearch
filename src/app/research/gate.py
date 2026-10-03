@@ -177,7 +177,8 @@ def g4_density(inp: GateInput) -> CheckResult:
         "G4",
         "citation-density",
         density >= inp.rules.citation_density_min,
-        f"{density:.1f} citations per 1000 body words, at least {inp.rules.citation_density_min:g} needed",
+        f"{density:.1f} citations per 1000 body words, "
+        f"at least {inp.rules.citation_density_min:g} needed",
     )
 
 

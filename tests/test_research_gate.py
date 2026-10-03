@@ -377,7 +377,7 @@ def test_g9_the_notice_may_follow_the_citation() -> None:
 
 
 def test_g10_light_needs_the_polish_log_and_the_readability_decisions() -> None:
-    assert LIGHT_ARTIFACTS == frozenset({"polish-log.json", "readability-decisions.json"})
+    assert frozenset({"polish-log.json", "readability-decisions.json"}) == LIGHT_ARTIFACTS
     assert "G10" not in failed()
     assert "G10" in failed(artifacts=frozenset({"polish-log.json"}))
     assert "G10" in failed(artifacts=frozenset())
