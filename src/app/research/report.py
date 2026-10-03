@@ -129,13 +129,14 @@ class _Numbering:
         return match[1] + " ".join("[" + ", ".join(map(str, chunk)) + "]" for chunk in chunks)
 
 
-def _fence(brief: str) -> str:
-    longest = max((len(run) for run in _BACKTICKS.findall(brief)), default=0)
+def fence_for(text: str) -> str:
+    """A code fence longer than any run of backticks in ``text``."""
+    longest = max((len(run) for run in _BACKTICKS.findall(text)), default=0)
     return "`" * max(3, longest + 1)
 
 
 def _appendix(language: str, brief: ApprovedBrief) -> str:
-    fence = _fence(brief.text)
+    fence = fence_for(brief.text)
     stamp = brief.approved_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
     provenance = (
         f"Freigegeben am {stamp} UTC. Archiviert unter {brief.archive_path}."

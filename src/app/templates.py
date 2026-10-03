@@ -75,7 +75,7 @@ def _normalize(heading: str) -> str:
     return " ".join(heading.split()).casefold()
 
 
-def _is_reserved(heading: str) -> bool:
+def is_reserved_heading(heading: str) -> bool:
     norm = _normalize(heading)
     first = _FIRST_WORD.match(norm)
     return norm in RESERVED_TITLES or (first is not None and first.group() in RESERVED_FIRST_WORDS)
@@ -131,7 +131,7 @@ def _sections(body: str, source: str) -> tuple[Section, ...]:
         end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
         comment = _COMMENT.search(body[match.end() : end])
         heading = match["title"].strip()
-        if _is_reserved(heading):
+        if is_reserved_heading(heading):
             raise TemplateError(f"{source}: heading {heading!r} is reserved (Sources/Appendix)")
         if _normalize(heading) in seen:
             raise TemplateError(f"{source}: duplicate heading {heading!r}")
