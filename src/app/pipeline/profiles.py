@@ -103,6 +103,9 @@ class RunRules(BaseModel):
     wave2_urls_per_item: int = Field(gt=0)
     search_max_results: int = Field(gt=0)
     pack_context_fraction: float = Field(gt=0, le=1)  # share of reason's prompt budget for evidence
+    condensed_share: float = Field(ge=0, lt=1)  # of that budget, kept free for condensed evidence
+    pack_passages: int = Field(ge=0)  # passages from a full-text search added to the evidence
+    passage_chars: int = Field(gt=0)  # the longest passage taken from one source
     hunk_max_chars: int = Field(gt=0)
     section_over_factor: float = Field(gt=1)  # a section above this many times its words is long
     section_under_factor: float = Field(gt=0, lt=1)  # ... and below this many, short

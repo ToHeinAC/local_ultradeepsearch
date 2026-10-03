@@ -159,15 +159,15 @@ def select_for_items(
     return list(chosen.values())
 
 
-def coverage_counts(
-    notes: Sequence[Note], candidates: Sequence[Candidate], item_ids: Sequence[str]
-) -> dict[str, int]:
-    """Per item, the complete, original, successfully read sources its queries found (D6).
-    A note is matched to its candidate by canonical URL, or by DOI when another URL got there
-    first."""
+def provenance(
+    notes: Sequence[Note], candidates: Sequence[Candidate]
+) -> dict[str, tuple[str, ...]]:
+    """Per substantive note (complete, original, successfully read), the items whose queries
+    found it. A note is matched to its candidate by canonical URL, or by DOI when another URL got
+    there first."""
     by_key = {c.key: c for c in candidates}
     by_doi = {normalize_doi(c.meta.doi): c for c in candidates if c.meta.doi}
-    counts = dict.fromkeys(item_ids, 0)
+    found: dict[str, tuple[str, ...]] = {}
     for note in notes:
         if (
             note.kind != "source"
@@ -176,8 +176,18 @@ def coverage_counts(
             or note.extract_failed
         ):
             continue
-        found = by_key.get(note.canonical_url) or by_doi.get(note.doi)
-        for item in found.items if found else ():
+        candidate = by_key.get(note.canonical_url) or by_doi.get(note.doi)
+        found[note.note_id] = candidate.items if candidate else ()
+    return found
+
+
+def coverage_counts(
+    notes: Sequence[Note], candidates: Sequence[Candidate], item_ids: Sequence[str]
+) -> dict[str, int]:
+    """Per item, the substantive sources its queries found (D6)."""
+    counts = dict.fromkeys(item_ids, 0)
+    for items in provenance(notes, candidates).values():
+        for item in items:
             if item in counts:
                 counts[item] += 1
     return counts

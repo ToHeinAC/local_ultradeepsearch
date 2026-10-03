@@ -156,3 +156,14 @@ class SearchPlan(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     queries: tuple[PlannedQuery, ...]
+
+
+class CondensedLine(BaseModel):
+    key: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class CondensedEvidence(BaseModel):
+    """Evidence that did not fit a section's prompt, condensed by the `summarize` role."""
+
+    lines: list[CondensedLine]

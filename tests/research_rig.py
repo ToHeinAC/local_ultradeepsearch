@@ -2,6 +2,7 @@
 parts of a research run wired on fakes."""
 
 import json
+import re
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -18,7 +19,10 @@ from app.llm.roles import build_registry
 from app.llm.service import LLMService
 from app.llm.types import ChatReply, ChatRequest, Endpoint
 from app.pipeline.profiles import load_research_budget, load_response_formats, load_run_rules
+from app.pipeline.urls import dedup_key
 from app.research.manifest import RunSettings
+from app.store.models import NewClaim, NewSource, Note, SourceMeta
+from app.store.vault import Vault
 from app.templates import load_templates
 
 SETTINGS = make_settings()
@@ -120,6 +124,10 @@ class FakePreparer:
         return PreparedQuery(query, sent, removed)
 
 
+class ModelCrash(BaseException):
+    """A crash inside a model call that no `except Exception` may swallow."""
+
+
 class SearchCrash(BaseException):
     """A crash that no `except Exception` may swallow, like a power cut."""
 
@@ -167,6 +175,66 @@ class FakeSearcher:
         return self.scholarly.get((source, prepared.sent), [])
 
 
+SENTENCE = (
+    "Der Rückbau kerntechnischer Anlagen dauert nach den vorliegenden Angaben mehrere Jahre und "
+    "erfordert eine umfangreiche Genehmigung durch die zuständige Behörde"
+)
+
+
+def german_text(words: int, key: str = "S1") -> str:
+    """About ``words`` words of German with a citation after every sentence."""
+    per_sentence = len(SENTENCE.split()) + 1
+    count = max(1, round(words / per_sentence))
+    return " ".join(f"{SENTENCE} [{key}]." for _ in range(count))
+
+
+def claim(text: str, quote: str) -> NewClaim:
+    return NewClaim(text, "supports", "scope", "empirical", "", quote, (), (), None, None, "high")
+
+
+def seed_note(
+    vault: Vault,
+    n: int,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    summary: str = "",
+    claims: Sequence[NewClaim] = (),
+    tier: str = "unknown",
+    meta: SourceMeta | None = None,
+    derivative_of: str | None = None,
+    complete: bool = True,
+    failed: bool = False,
+) -> Note:
+    """A stored, extracted and (by default) completed source of the run."""
+    text = body if body is not None else f"Quelltext {n}. " * 20
+    url = f"https://seed{n}.example.org/a"
+    source = NewSource(
+        url=url,
+        final_url=url,
+        canonical_url=dedup_key(url),
+        doi=None,
+        title=title or f"Quelle {n}",
+        content_type="text/html",
+        via="local",
+        body=text,
+        pages=(),
+        word_count=len(text.split()),
+        source_tier=tier,
+        derivative_of=derivative_of,
+        minhash=None,
+        links=(),
+        meta=meta or SourceMeta(),
+    )
+    note, _ = vault.add_source_note(source)
+    vault.save_extraction(note.note_id, summary, list(claims), dropped=0, failed=failed)
+    if complete:
+        vault.mark_complete(note.note_id)
+    found = vault.get_note(note.note_id)
+    assert found is not None
+    return found
+
+
 @dataclass
 class ResearchModels:
     """Scripted answers by schema (or prompt for free text), and a record of every call."""
@@ -174,6 +242,10 @@ class ResearchModels:
     drafts: list[dict[str, Any]] = field(default_factory=lambda: [DRAFT])
     matrices: list[dict[str, Any]] = field(default_factory=lambda: [CLEAN_MATRIX])
     plans: list[dict[str, Any]] = field(default_factory=lambda: [PLAN])
+    texts: dict[str, str] = field(default_factory=lambda: {})  # section heading -> answer
+    condensed: list[dict[str, Any]] | None = None
+    crash_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call crashes
+    thinks: dict[str, list[bool]] = field(default_factory=lambda: {})  # kind -> `think` per call
     errors: dict[str, Exception] = field(default_factory=lambda: {})
     calls: dict[str, int] = field(default_factory=lambda: {})
     prompts: dict[str, list[str]] = field(default_factory=lambda: {})
@@ -187,12 +259,27 @@ class ResearchModels:
         with self._lock:
             self.calls[kind] = self.calls.get(kind, 0) + 1
             number = self.calls[kind]
+            self.thinks.setdefault(kind, []).append(request.think)
             self.prompts.setdefault(kind, []).append(
                 "\n".join(m["content"] for m in request.messages)
             )
+        if self.crash_on.get(kind) == number:
+            raise ModelCrash(f"crash in {kind} call {number}")
         if kind in self.errors:
             return self.errors[kind]
+        if kind == "text":
+            return reply(self._text(request))
         return reply(json.dumps(self._answer(kind, number)))
+
+    def _text(self, request: ChatRequest) -> str:
+        """A section: the scripted text of its heading, else German text of the asked length."""
+        user = request.messages[-1]["content"]
+        heading = re.search(r"Section to write: (.+)", user)
+        words = re.search(r"Write about (\d+) words", user)
+        name = heading[1] if heading else ""
+        if name in self.texts:
+            return self.texts[name]
+        return german_text(int(words[1]) if words else 50)
 
     def _answer(self, kind: str, number: int) -> dict[str, Any]:
         if kind == "DecompositionDraft":
@@ -201,6 +288,13 @@ class ResearchModels:
             return self.matrices[min(number, len(self.matrices)) - 1]
         if kind == "PlanDraft":
             return self.plans[min(number, len(self.plans)) - 1]
+        if kind == "CondensedEvidence":
+            if self.condensed is not None:
+                return self.condensed[min(number, len(self.condensed)) - 1]
+            keys = list(
+                dict.fromkeys(re.findall(r"\[(S\d+)\]", self.prompts["CondensedEvidence"][-1]))
+            )
+            return {"lines": [{"key": k, "text": f"Verdichtet zu {k}."} for k in keys]}
         raise AssertionError(f"no scripted answer for {kind}")
 
 
