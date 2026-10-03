@@ -27,7 +27,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
-| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | light step-sequence, G1–G12 fixtures; live Lite run |
+| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline so far: every step, the gate G1–G12 with fixtures, fix rounds, export and a whole Lite run on fakes (`test_research_*.py`); CLI, wiring, SIGKILL tests, docs and the live run remain, see the plan |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
@@ -56,6 +56,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/templates.py`, `templates/` | Report templates (front matter plus one H2 per section), validation, the five built-ins. |
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
+| `src/app/research/` | Phase 2 (M5, in progress): manifest and settings, report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [plans/m5-lite.md](docs/plans/m5-lite.md). |
+| `src/app/graphs/research.py`, `src/app/adapters/pandoc.py` | The `research` graph and its runner; the only code that starts pandoc. |
 | `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
 | `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
 | `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
@@ -74,6 +76,13 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `.claude/hooks/stop_gate.py` | Stop hook: runs the gate if `.py` files changed; blocks the stop on failure. |
 
 ## 4. Open issues
+
+- M5 (in progress): `weasyprint` was added for the PDF export. Its dependency `pyphen` is licensed
+  GPL-2.0+/LGPL-2.1+/MPL-1.1 (the user picks one), which [AGENTS.md](AGENTS.md) §5.5 treats as an
+  exception that needs the owner's approval. `uv add` also rewrote `uv.lock` in lock revision 2
+  (a newer uv), which is why that diff is large. `include_domains` hints of the domain strategies
+  are not passed to Tavily yet: they would restrict results, so M5 only ranks authoritative hosts
+  first.
 
 - PRD wording differs from the code in these places and needs the owner's approval to change:
   1. §3.1 and R6 say `UDR_OLLAMA_GPU`; the variable is `UDR_OWN_OLLAMA_GPU`.

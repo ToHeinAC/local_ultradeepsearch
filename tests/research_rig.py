@@ -4,12 +4,14 @@ parts of a research run wired on fakes."""
 import json
 import re
 import threading
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from docx import Document
 from support import make_settings
 
 from app.adapters.outbound.gateway import PreparedQuery
@@ -23,12 +25,15 @@ from app.pipeline.profiles import load_research_budget, load_response_formats, l
 from app.pipeline.urls import dedup_key
 from app.research.draft import Drafter
 from app.research.evidence import EvidenceKeys, PackBuilder
+from app.research.export import PandocResult
 from app.research.fixes_model import ModelFixes
 from app.research.manifest import RunSettings
+from app.research.markdown import h2_list
 from app.store.models import NewClaim, NewSource, Note, SourceMeta
 from app.store.vault import Vault
 from app.templates import load_templates
 
+HANG_SECONDS = 120
 SETTINGS = make_settings()
 RULES = load_run_rules(SETTINGS.config_dir)
 LIGHT = load_research_budget("light", SETTINGS.config_dir)
@@ -147,7 +152,9 @@ class FakeSearcher:
         scholarly: dict[tuple[str, str], list[ScholarlyRecord]] | None = None,
         fail: dict[tuple[str, str], Exception] | None = None,
         crash_at: int | None = None,
+        hang_at: int | None = None,
     ) -> None:
+        self.hang_at = hang_at  # the n-th call sleeps "forever" (a SIGKILL test kills it there)
         self.web = web or {}
         self.scholarly = scholarly or {}
         self.fail = fail or {}
@@ -158,6 +165,9 @@ class FakeSearcher:
         self.calls.append((source, sent))
         if self.crash_at == len(self.calls):
             raise SearchCrash(f"crash at search {len(self.calls)}")
+        if self.hang_at == len(self.calls):
+            print(f"HANGING search {len(self.calls)}", flush=True)
+            time.sleep(HANG_SECONDS)
         if (source, sent) in self.fail:
             raise self.fail[(source, sent)]
 
@@ -250,6 +260,7 @@ class ResearchModels:
     condensed: list[dict[str, Any]] | None = None
     crash_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call crashes
     answers: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: {})  # by schema title
+    hang_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call sleeps
     thinks: dict[str, list[bool]] = field(default_factory=lambda: {})  # kind -> `think` per call
     models_used: dict[str, set[str]] = field(default_factory=lambda: {})  # kind -> model tags
     polishes: list[dict[str, Any]] = field(
@@ -276,6 +287,9 @@ class ResearchModels:
             )
         if self.crash_on.get(kind) == number:
             raise ModelCrash(f"crash in {kind} call {number}")
+        if self.hang_on.get(kind) == number:
+            print(f"HANGING {kind} {number}", flush=True)
+            time.sleep(HANG_SECONDS)
         if kind in self.errors:
             return self.errors[kind]
         if kind == "text":
@@ -373,3 +387,44 @@ def wired(
         service, packs, keys, RULES, events, prompt_chars=prompt_chars, condense_chars=20_000
     )
     return Wired(vault, ids, models, events, keys, packs, drafter, fixes)
+
+
+def make_docx(path: Path, headings: Sequence[str]) -> None:
+    document = Document()
+    document.add_heading("Titel", level=1)
+    for heading in headings:
+        document.add_heading(heading, level=2)
+    document.save(str(path))
+
+
+class FakePandoc:
+    """Writes what pandoc would: a DOCX with the report's H2s, a PDF, or nothing at all."""
+
+    def __init__(
+        self,
+        *,
+        docx_headings: Sequence[str] | None = None,
+        pdf_bytes: bytes = b"%PDF-1.7\n%fake",
+        code: int = 0,
+        stderr: str = "",
+        write: bool = True,
+    ) -> None:
+        self.docx_headings = docx_headings
+        self.pdf_bytes = pdf_bytes
+        self.code = code
+        self.stderr = stderr
+        self.write = write
+        self.calls: list[tuple[list[str], Path]] = []
+
+    def run(self, args: Sequence[str], *, cwd: Path) -> PandocResult:
+        self.calls.append((list(args), cwd))
+        out = Path(args[args.index("-o") + 1])
+        if self.write and self.code == 0:
+            if out.suffix == ".docx":
+                found = self.docx_headings
+                if found is None:  # like pandoc: every H2 of the report
+                    found = h2_list((cwd / "report.md").read_text(encoding="utf-8"))
+                make_docx(cwd / out, found)
+            else:
+                (cwd / out).write_bytes(self.pdf_bytes)
+        return PandocResult(self.code, self.stderr)

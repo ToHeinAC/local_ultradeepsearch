@@ -4,6 +4,31 @@
 **Executor:** Opus 5.5, effort high. Follow [AGENTS.md](../../AGENTS.md) for every step:
 red → green → mutation check → gate → commit. No push unless asked.
 
+## Progress (2026-10-03, paused here on the owner's request)
+
+Done and committed, each with tests written first and checked by deliberate code breaks:
+steps 0 to 11 (config and manifest, report rendering, gate G1-G12, patch engine, decomposition, search
+plan and its edits, sweep, evidence packs and drafting, polish and readability, fix rounds and the
+blocked outcome, export), the worker lock, and the service, graph and steps of step 12, which run a
+whole Lite run on fakes (`tests/test_research_service.py`).
+
+Still to do, in this order:
+1. Step 12 rest: two real SIGKILL tests (during the sweep and during drafting) with a child process
+   built on `tests/research_run_rig.py`; close four surviving mutants of `steps.py` and
+   `service.py` (the second plan-hash check in `confirm_plan`, the stored must-read set, the
+   re-render after polish, the "interrupt pending" early return).
+2. `bootstrap.build_research_service(rt)`: the real `RunContext` factory (gateway as searcher,
+   preparer and fetcher, `build_pipeline`, `resolve_run_settings` with the session fallback), the
+   step dependencies from the registry, `SubprocessPandoc`, and a wiring smoke test.
+3. Step 13: `udr run <run_id>` and `udr run --brief` (D1, D3): plan table, `$EDITOR` loop,
+   `--approve-plan`, exit codes.
+4. Step 14: `docs/research.md`, `architecture.md`, IMPLEMENTATION.md status.
+5. Step 15 on the server: M2/M3/M4 live checks, then the German Lite reference run (AC8).
+
+Changes against this plan: no `candidates` table (candidates are derived from the stored searches);
+the effective settings are frozen into `runs.settings_json` when a brief is approved (the session row
+does not hold defaults); retracted sources are never offered as evidence.
+
 ## Context
 
 M1–M4 are done. M4 leaves a `queued` run row with an archived, approved brief. M5 turns that row

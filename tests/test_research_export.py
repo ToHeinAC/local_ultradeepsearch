@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from docx import Document
+from research_rig import FakePandoc
 
 from app.adapters.pandoc import PandocResult, SubprocessPandoc
 from app.events import MemoryEventSink
@@ -24,44 +24,6 @@ REPORT = (
     "```text\n# Brief\n\n## Ausgabe\n```\n"
 )
 H2 = ["Eins", "Zwei", "Quellen", "Anhang A — Recherche-Brief"]
-
-
-def make_docx(path: Path, headings: Sequence[str]) -> None:
-    document = Document()
-    document.add_heading("Titel", level=1)
-    for heading in headings:
-        document.add_heading(heading, level=2)
-    document.save(str(path))
-
-
-class FakePandoc:
-    """Writes what pandoc would: a DOCX with the report's H2s, a PDF, or nothing at all."""
-
-    def __init__(
-        self,
-        *,
-        docx_headings: Sequence[str] = tuple(H2),
-        pdf_bytes: bytes = b"%PDF-1.7\n%fake",
-        code: int = 0,
-        stderr: str = "",
-        write: bool = True,
-    ) -> None:
-        self.docx_headings = docx_headings
-        self.pdf_bytes = pdf_bytes
-        self.code = code
-        self.stderr = stderr
-        self.write = write
-        self.calls: list[tuple[list[str], Path]] = []
-
-    def run(self, args: Sequence[str], *, cwd: Path) -> PandocResult:
-        self.calls.append((list(args), cwd))
-        out = Path(args[args.index("-o") + 1])
-        if self.write and self.code == 0:
-            if out.suffix == ".docx":
-                make_docx(cwd / out, self.docx_headings)
-            else:
-                (cwd / out).write_bytes(self.pdf_bytes)
-        return PandocResult(self.code, self.stderr)
 
 
 def run_export(

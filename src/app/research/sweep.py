@@ -108,6 +108,16 @@ class _Context:
         return [item.id for item in self.items]
 
 
+def stored_wave2(run_dir: Path) -> list[PlannedQuery]:
+    """The second-wave queries of a run, as stored before they were searched; none if the run
+    had no second wave."""
+    path = run_dir / "temp" / WAVE2_FILE
+    if not path.exists():
+        return []
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    return [PlannedQuery.model_validate(q) for q in stored["queries"]]
+
+
 def sources_for(query: PlannedQuery, domains: Sequence[str]) -> list[str]:
     """Where a query is searched: the web, or OpenAlex and Crossref (and arXiv for science and
     technical topics)."""
@@ -235,8 +245,7 @@ class Sweeper:
     def _wave2_queries(self, ctx: _Context, thin: list[str]) -> list[PlannedQuery]:
         path = self._d.run_dir / "temp" / WAVE2_FILE
         if path.exists():
-            stored = json.loads(path.read_text(encoding="utf-8"))
-            return [PlannedQuery.model_validate(q) for q in stored["queries"]]
+            return stored_wave2(self._d.run_dir)
         drafts = self._ask_wave2(ctx, thin)
         queries = [
             prepare(self._d.preparer, f"w2-q{n:02d}", x.item, x.lens, x.query, step=STEP)
