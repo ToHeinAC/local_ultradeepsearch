@@ -85,6 +85,24 @@ def export_note_files(vault: Vault, run_dir: Path) -> int:
     return written
 
 
+def _load_run_json(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        loaded: object = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path} (run.json) is not valid JSON") from exc
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{path} (run.json) must hold a JSON object")
+    return dict(cast("dict[str, object]", loaded))
+
+
+def read_run_json(run_dir: Path) -> dict[str, object]:
+    """The content of `run.json`, empty if it does not exist yet. A damaged file is an error."""
+    with _RUN_JSON_LOCK:
+        return _load_run_json(run_dir / "run.json")
+
+
 def merge_run_json(run_dir: Path, updates: Mapping[str, object]) -> dict[str, object]:
     """Merge ``updates`` into `run.json` (created if missing) and return the result.
 
@@ -92,15 +110,7 @@ def merge_run_json(run_dir: Path, updates: Mapping[str, object]) -> dict[str, ob
     """
     path = run_dir / "run.json"
     with _RUN_JSON_LOCK:
-        data: dict[str, object] = {}
-        if path.exists():
-            try:
-                loaded: object = json.loads(path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"{path} (run.json) is not valid JSON") from exc
-            if not isinstance(loaded, dict):
-                raise ValueError(f"{path} (run.json) must hold a JSON object")
-            data = dict(cast("dict[str, object]", loaded))
+        data = _load_run_json(path)
         data.update(updates)
         write_json(path, data)
     return data
