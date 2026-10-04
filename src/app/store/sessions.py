@@ -177,8 +177,24 @@ class SessionStore:
             (report_language, response_format, template_id),
         )
 
-    def set_digest(self, session_id: str, digest: str, notice: str) -> None:
-        self._update(session_id, "upload_digest = ?, digest_notice = ?", (digest, notice))
+    def set_digest(
+        self, session_id: str, digest: str, notice: str, distilled: Sequence[str] = ()
+    ) -> None:
+        """Store the digest and, in the same transaction, move the files it now covers
+        (``distilled``, file ids) `extracted` → `distilled`."""
+        with self._db.tx():
+            done = self._db.conn.execute(
+                "UPDATE sessions SET upload_digest = ?, digest_notice = ?, updated_at = ? "
+                "WHERE session_id = ?",
+                (digest, notice, self._db.stamp(), session_id),
+            )
+            if done.rowcount == 0:
+                raise NotFound(session_id)
+            self._db.conn.executemany(
+                "UPDATE uploads SET stage = 'distilled' "
+                "WHERE session_id = ? AND file_id = ? AND stage = 'extracted'",
+                [(session_id, file_id) for file_id in distilled],
+            )
 
     def set_brief(self, session_id: str, text: str) -> str:
         """Store the current brief in canonical form; returns its approval hash."""
@@ -243,14 +259,6 @@ class SessionStore:
             "UPDATE uploads SET pages_json = ?, warnings_json = ?, stage = 'extracted' "
             "WHERE session_id = ? AND file_id = ? AND stage = 'stored'",
             (json.dumps(list(pages)), json.dumps(list(warnings)), session_id, file_id),
-        )
-
-    def mark_distilled(self, session_id: str, file_id: str) -> bool:
-        """Move `extracted` → `distilled`. False if the file is not at `extracted`."""
-        return self._advance(
-            "UPDATE uploads SET stage = 'distilled' "
-            "WHERE session_id = ? AND file_id = ? AND stage = 'extracted'",
-            (session_id, file_id),
         )
 
     def add_part(self, session_id: str, file_id: str, part: int, facts: Sequence[Fact]) -> None:

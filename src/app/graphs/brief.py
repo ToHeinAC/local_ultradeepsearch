@@ -3,6 +3,7 @@ approved brief. The thread id is the session id and the checkpointer is SQLite, 
 survives a restart and continues at its pending interrupt.
 
     ingest_uploads -> assess -> ask (interrupt) -> ingest_uploads ...   (the question rounds)
+    ingest_uploads -> draft_brief          (after the last round: files added in it are read too)
                           \\-> offer (interrupt) -> strengthen_brief | install_verbatim
     draft_brief -> recommend -> decide (interrupt) -> revise | edit | settings | save -> decide
                                                   \\-> finalize -> END
@@ -299,9 +300,9 @@ def _route_offer(state: BriefState) -> str:
     return "strengthen_brief" if state["strengthen"] else "install_verbatim"
 
 
-def _route_after_ask(deps: BriefDeps, state: BriefState) -> str:
+def _route_after_ingest(deps: BriefDeps, state: BriefState) -> str:
     done = state["genug"] or state["round"] >= deps.limits.max_rounds
-    return "draft_brief" if done else "ingest_uploads"
+    return "draft_brief" if done else "assess"
 
 
 def _route_verbatim(state: BriefState) -> str:
@@ -327,8 +328,8 @@ def build_brief_graph(deps: BriefDeps, checkpointer: BaseCheckpointSaver[Any]) -
     # LangGraph's builder signatures are partly untyped; the nodes and routers around it are typed.
     builder = cast("Any", StateGraph(BriefState))
 
-    def after_ask(state: BriefState) -> str:
-        return _route_after_ask(deps, state)
+    def after_ingest(state: BriefState) -> str:
+        return _route_after_ingest(deps, state)
 
     for name in (
         "ingest_uploads",
@@ -348,9 +349,9 @@ def build_brief_graph(deps: BriefDeps, checkpointer: BaseCheckpointSaver[Any]) -
     ):
         builder.add_node(name, getattr(nodes, name))
     builder.add_edge(START, "ingest_uploads")
-    builder.add_edge("ingest_uploads", "assess")
+    builder.add_conditional_edges("ingest_uploads", after_ingest, ["assess", "draft_brief"])
     builder.add_conditional_edges("assess", _route_assess, ["offer", "ask", "draft_brief"])
-    builder.add_conditional_edges("ask", after_ask, ["draft_brief", "ingest_uploads"])
+    builder.add_edge("ask", "ingest_uploads")
     builder.add_conditional_edges("offer", _route_offer, ["strengthen_brief", "install_verbatim"])
     builder.add_conditional_edges("install_verbatim", _route_verbatim, ["offer", "recommend"])
     builder.add_edge("strengthen_brief", "recommend")
