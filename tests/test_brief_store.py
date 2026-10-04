@@ -528,3 +528,14 @@ def test_concurrent_approvals_of_one_session_make_exactly_one_run(
     assert errors == []
     assert len(set(results)) == 1
     assert db.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
+
+
+def test_the_approval_time_is_read_back_from_the_archive_name(tmp_path: Path) -> None:
+    from app.brief.archive import approved_at_of
+
+    first = archive_brief(tmp_path, BRIEF, NOW)
+    second = archive_brief(tmp_path, BRIEF + "\n3. Mehr\n", NOW)  # same second: `-2`
+    assert second.name.endswith("-2.md")
+    assert approved_at_of(first) == approved_at_of(second) == NOW.replace(microsecond=0)
+    with pytest.raises(ValueError, match="not an archived brief"):
+        approved_at_of(tmp_path / "x.md")

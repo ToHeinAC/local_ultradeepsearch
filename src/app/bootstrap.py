@@ -29,8 +29,12 @@ from app.adapters.outbound.sanitizer import Sanitizer
 from app.adapters.outbound.scholarly import ArxivApi, CrossrefApi, OpenAlexApi
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.outbound.types import HttpFactory, default_http
+from app.adapters.pandoc import SubprocessPandoc
 from app.adapters.system_probe import Gpu
+from app.brief.archive import approved_at_of
+from app.brief.errors import NotFound
 from app.brief.interview import Interviewer
+from app.brief.parse import parse_brief
 from app.brief.service import BriefService, ServiceDeps
 from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
@@ -38,17 +42,35 @@ from app.config import Settings
 from app.doctor import DoctorSnapshot
 from app.events import EventSink
 from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph, open_checkpointer
+from app.graphs.research import ResearchRunner, build_research_graph
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
+from app.llm.structured import CHARS_PER_TOKEN
 from app.llm.types import Endpoint, Role, RoleSpec, Transport
 from app.pipeline.analysis import SourceAnalyzer
 from app.pipeline.extraction import Focus, NoteExtractor
 from app.pipeline.fetch import Fetcher, FetchPipeline
-from app.pipeline.profiles import load_phase1, load_profile, load_response_formats
+from app.pipeline.profiles import (
+    Profile,
+    load_phase1,
+    load_profile,
+    load_research_budget,
+    load_response_formats,
+    load_run_rules,
+)
 from app.pipeline.strategies import load_strategies
+from app.research.export import PandocRunner
+from app.research.plan import QueryPreparer
+from app.research.report import ApprovedBrief
+from app.research.service import ResearchService
+from app.research.service import ServiceDeps as ResearchServiceDeps
+from app.research.settings import resolve_run_settings
+from app.research.steps import ResearchSteps, RunContext, StepDeps
+from app.research.sweep import Searcher
 from app.store.db import Database
-from app.store.runs import RunStore
-from app.store.sessions import SessionStore
+from app.store.research import SearchStore
+from app.store.runs import RunRow, RunStore
+from app.store.sessions import SessionRow, SessionStore
 from app.store.vault import Vault
 from app.templates import ReportTemplate, load_templates
 
@@ -300,6 +322,153 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
             templates=templates,
             formats=formats,
             drafts_dir=drafts_dir,
+            now=now,
+        )
+    )
+
+
+# ---- Phase 2 (M5) ---------------------------------------------------------------------------
+
+LOCK_FILE = "worker.lock"
+REPORT_CSS = "report.css"
+CONDENSE_SHARE = 0.6  # of summarize's context one condensing call may fill
+
+
+class _RunGateway(QueryPreparer, Searcher, Fetcher, Protocol):
+    """What one run needs from the outbound side: the real gateway, or a fake in tests."""
+
+
+GatewayFactory = Callable[[Path, str, Profile], _RunGateway]
+
+
+def _step_deps(
+    rt: Runtime,
+    searches: SearchStore,
+    runs: RunStore,
+    pandoc: PandocRunner,
+    now: Callable[[], datetime],
+) -> StepDeps:
+    settings = rt.settings
+    reason, summarize = rt.registry[Role.REASON], rt.registry[Role.SUMMARIZE]
+    return StepDeps(
+        service=rt.service,
+        runs=runs,
+        searches=searches,
+        rules=load_run_rules(settings.config_dir),
+        budgets={t: load_research_budget(t, settings.config_dir) for t in TIERS},
+        strategies=load_strategies(settings.config_dir),
+        formats=load_response_formats(settings.config_dir),
+        events=rt.events,
+        pandoc=pandoc,
+        css=settings.templates_dir / REPORT_CSS,
+        prompt_chars=(reason.num_ctx - reason.num_predict) * CHARS_PER_TOKEN,
+        condense_chars=int(
+            (summarize.num_ctx - summarize.num_predict) * CHARS_PER_TOKEN * CONDENSE_SHARE
+        ),
+        now=now,
+    )
+
+
+def _build_run_context(
+    rt: Runtime,
+    row: RunRow,
+    session: SessionRow | None,
+    templates: dict[str, ReportTemplate],
+    make_gateway: GatewayFactory,
+) -> RunContext:
+    settings = rt.settings
+    run_settings = resolve_run_settings(row, session, templates)
+    archive = Path(str(row.brief_path))
+    text = archive.read_text(encoding="utf-8")
+    parsed = parse_brief(text)
+    directory = run_dir(settings, row.run_id)
+    gateway = make_gateway(directory, text, load_profile(run_settings.tier, settings.config_dir))
+    template = templates[run_settings.template_id]
+    pipeline = build_pipeline(
+        rt,
+        row.run_id,
+        tier=run_settings.tier,
+        focus=Focus(parsed.title, parsed.research_questions),
+        fetcher=gateway,
+    )
+    reference = (
+        settings.data_dir / "templates" / template.reference_docx
+        if template.reference_docx
+        else None
+    )
+    return RunContext(
+        run=row,
+        run_dir=directory,
+        settings=run_settings,
+        brief=ApprovedBrief(text, approved_at_of(archive), archive.name),
+        template=template,
+        vault=open_vault(settings, row.run_id),
+        preparer=gateway,
+        searcher=gateway,
+        ingestor=pipeline,
+        reference_docx=reference,
+    )
+
+
+def _run_context_factory(
+    rt: Runtime,
+    runs: RunStore,
+    sessions: SessionStore,
+    templates: dict[str, ReportTemplate],
+    make_gateway: GatewayFactory,
+) -> Callable[[str], RunContext]:
+    """The per-run objects, built on first use and kept: one gateway (and so one credit counter)
+    and one fetch pipeline per run and process."""
+    cache: dict[str, RunContext] = {}
+
+    def context(run_id: str) -> RunContext:
+        if run_id not in cache:
+            row = runs.get_run(run_id)
+            if row is None:
+                raise NotFound(run_id)
+            session = sessions.get(row.session_id) if row.session_id else None
+            cache[run_id] = _build_run_context(rt, row, session, templates, make_gateway)
+        return cache[run_id]
+
+    return context
+
+
+def build_research_service(
+    rt: Runtime,
+    *,
+    now: Callable[[], datetime] = _utcnow,
+    gateway_factory: GatewayFactory | None = None,
+    pandoc: PandocRunner | None = None,
+) -> ResearchService:
+    """The Phase-2 service on the runtime's models, ``data/udr.sqlite`` and the checkpointer in
+    ``data/checkpoints.sqlite``. ``gateway_factory`` and ``pandoc`` replace the real outbound
+    gateway and the pandoc binary (tests). The worker slot is ``data/worker.lock``."""
+    settings = rt.settings
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    db = Database(settings.data_dir / VAULT_FILE)
+    runs, sessions, searches = RunStore(db), SessionStore(db), SearchStore(db)
+    templates = load_report_templates(settings)
+
+    def real_gateway(directory: Path, brief: str, profile: Profile) -> _RunGateway:
+        return build_gateway(
+            rt, directory, credit_cap=profile.credit_cap, confidential_context=brief
+        )
+
+    context = _run_context_factory(rt, runs, sessions, templates, gateway_factory or real_gateway)
+    deps = _step_deps(rt, searches, runs, pandoc or SubprocessPandoc(), now)
+    graph = build_research_graph(
+        ResearchSteps(deps, context), open_checkpointer(settings.data_dir / CHECKPOINT_FILE)
+    )
+    return ResearchService(
+        ResearchServiceDeps(
+            runs=runs,
+            runner=ResearchRunner(graph),
+            events=rt.events,
+            contexts=context,
+            templates=templates,
+            formats=deps.formats,
+            data_dir=settings.data_dir,
+            lock_path=settings.data_dir / LOCK_FILE,
             now=now,
         )
     )

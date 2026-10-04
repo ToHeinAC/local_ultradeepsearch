@@ -65,3 +65,14 @@ def write_draft(directory: Path, session_id: str, text: str) -> Path:
     path = directory / f"{session_id}.md"
     write_text(path, canonical_text(text), scrub=False)
     return path
+
+
+_STAMP = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)(?:-\d+)?\.md")
+
+
+def approved_at_of(path: Path) -> datetime:
+    """When the archived brief was approved: the UTC timestamp in its file name."""
+    found = _STAMP.fullmatch(path.name)
+    if found is None:
+        raise ValueError(f"{path.name} is not an archived brief")
+    return datetime.strptime(found[1], "%Y-%m-%dT%H-%M-%SZ").replace(tzinfo=UTC)
