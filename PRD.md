@@ -133,7 +133,7 @@ search queries.
 ### 3.3 Search, fetch and budget
 
 - **Search order per atomic item:**
-  1. Scholarly APIs: OpenAlex, Crossref, and arXiv for STEM.
+  1. Scholarly APIs: OpenAlex, Crossref, arXiv for STEM (Lite: scholarly-first domains only).
   2. Tavily Search (`basic`, `max_results=10`).
   3. `ddgs` as fallback.
 - **Fetch order** *(adopted)*:
@@ -179,9 +179,9 @@ search queries.
 - **Licences** must be compatible with Apache-2.0.
   - Planned: langgraph, langgraph-checkpoint-sqlite, ollama, tavily-python, ddgs, httpx,
     trafilatura, pypdfium2, python-docx, datasketch, fastapi, uvicorn, sse-starlette, mcp,
-    streamlit, pydantic-settings, langdetect, weasyprint, psutil.
+    streamlit, pydantic-settings, langdetect, weasyprint, markdown-it-py, psutil.
   - pymupdf (AGPL) and hypothesis (MPL) are **not** allowed.
-  - pandoc (GPL) is used only as an external binary.
+  - No pandoc: DOCX via python-docx, PDF via weasyprint (owner decision 2026-10-02).
 - **Prior art** (the owner's projects; copying is fine):
   - `../KB_BS_local-hybrid-researcher/src/services/{ollama_client,tavily_client}.py`
   - `../KB_BS_local-deep-researcher-he/src/utils.py` (Ollama `format=` schema)
@@ -529,16 +529,16 @@ the report and exports stay downloadable, marked "nicht bestanden".
     deterministically. The coverage-matrix loop runs until there are no gaps, at most 3 times.
   - **Step 2.1:** plan with lenses A–D (breadth, depth/scholarly, adversarial, period-pinned),
     sanitize, then the approval interrupt.
-  - **Step 2:** light numbers, coverage check, wave 2 for thin items.
-  - **Step 10:** single draft, written section by section from evidence packs of the 8–15 most
-    relevant notes.
+  - **Step 2:** light numbers, coverage check, wave 2 for thin items; Wikipedia is never cited.
+  - **Step 10:** single draft, section by section (word weights from step 1), from evidence
+    packs of the 8–15 most relevant notes.
   - **Step 15:** polish hunks.
   - **Step 16:** `summarize` recommends; code applies the allowed categories in the original
     order.
   - **Gate:** G1–G12 with fix rounds.
-  - **Export:** `report.docx` via pandoc (optional template `reference_docx`); `report.pdf` via
-    pandoc `--pdf-engine=weasyprint` with a default CSS.
-  - **CLI:** `udr run --brief <file> --tier light --template <id>`, resumable.
+  - **Export:** `report.docx` via python-docx (styles from an optional `reference_docx`);
+    `report.pdf` via markdown-it-py HTML and weasyprint with a default CSS, no network access.
+  - **CLI (resumable):** `udr run <run_id>`; `udr run --brief <file> --tier light --template <id>`.
   - **Templates** live in `templates/` (built-in) and `data/templates/` (uploads).
     - Front matter: `id`, `name`, `description`, `language`, `default_response_format`, optional
       `reference_docx`.
@@ -562,11 +562,11 @@ the report and exports stay downloadable, marked "nicht bestanden".
   3. The report's H2 list = template headings + Sources + Appendix, in order.
   4. Every check G1–G12 has one passing fixture and at least one failing fixture.
   5. A gate that still fails after 3 rounds leaves the run `blocked`. `gate.json` names the checks,
-     and MD/DOCX/PDF stay downloadable.
+     and MD/DOCX/PDF stay downloadable; DOCX and PDF open with a "nicht bestanden" notice.
   6. Code rejects polish hunks with a net positive char delta. Readability recommendations outside
      the allowed categories, or touching an H2, are skipped and logged.
   7. Exports: the DOCX opens with python-docx and has every H2; the PDF starts with `%PDF`.
-     Without pandoc, export fails visibly and MD stays available.
+     If a renderer fails, that export fails visibly and MD stays available.
   8. **Live:** a German Lite reference run passes the gate, with a target of ≤ 60 min. Wall time,
      credits, sources and drop rate are recorded in IMPLEMENTATION.md.
 - **Edge cases:**
@@ -735,7 +735,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 - **Deliverable:**
   - systemd **user** units `udr-ollama`, `udr-api` and `udr-gui`: loopback only,
     `Restart=on-failure`, `EnvironmentFile=.env`, `loginctl enable-linger`.
-  - System packages `pandoc` and WeasyPrint's pango, installed with the owner's OK.
+  - WeasyPrint's system library pango, installed with the owner's OK (present on this host).
   - `udr backup`: SQLite online backup of both DBs, plus an archive of
     `data/{runs,briefs,templates,denylist.txt}` into `data/backups/<ts>/`. Keeps the last 7; the
     restore procedure is documented.
@@ -771,7 +771,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 | R11 | JS-heavy pages burn extract credits | Tavily Extract only as fallback | Extract > 30 % of a run's credits |
 | R12 | OpenAlex/Crossref rate limits | Polite pool (`mailto`); 1 req/s per host | HTTP 429 in the logs |
 | R13 | `qwen3.8-27b` is a custom tag | Tags live only in env | Doctor reports the tag missing |
-| R14 | pandoc is GPL | External binary only; never linked or vendored | Licence policy changes |
+| R14 | weasyprint pulls in `pyphen` (MPL tri-licence) and `pillow` (MIT-CMU) | Owner exception 2026-10-02 (AGENTS.md §5.5) | Licence policy changes |
 
 **Adopted without an explicit owner decision:**
 - A1: The GUI is Streamlit and German only (house style, global Streamlit rules).

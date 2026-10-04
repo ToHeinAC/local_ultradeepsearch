@@ -147,5 +147,6 @@ A change is done when steps 2–6 are complete. Report the red and green results
 The project is Apache-2.0 ([LICENSE](LICENSE)). Dependencies and copied code must use a permissive
 license compatible with Apache-2.0 (MIT, BSD, ISC, PSF, Apache-2.0). Record copied code in
 THIRD_PARTY_NOTICES.md. Accepted by the owner: the transitive, unmodified MPL dependencies `tld`
-(via trafilatura) and `certifi` (via httpx) on 2026-10-01, and `orjson` (via langgraph) on
+(via trafilatura) and `certifi` (via httpx) on 2026-10-01, `orjson` (via langgraph) on
+2026-10-02, and `pyphen` (MPL-1.1 option) and `pillow` (MIT-CMU), both via weasyprint, on
 2026-10-02. Any further exception needs the owner's approval.

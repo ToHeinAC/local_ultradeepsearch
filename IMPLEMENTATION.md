@@ -27,7 +27,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
-| 5 | M5: Lite end to end, plan gate, templates, ship gate, export | planned | light step-sequence, G1–G12 fixtures; live Lite run |
+| 5 | M5: Lite end to end, plan gate, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | light step-sequence, G1–G12 fixtures; live Lite run |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
@@ -110,6 +110,11 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   open, for the GUI and the API.
 - `orjson` (MPL-2.0 part), a hard dependency of LangGraph, was accepted as a transitive exception
   on 2026-10-02 ([AGENTS.md](AGENTS.md) §5.5).
+- M5 changed the PRD with the owner's approval (2026-10-02, [plan](docs/plans/m5-lite.md) Step 0):
+  no pandoc (DOCX via python-docx, PDF via markdown-it-py and weasyprint), scholarly APIs in Lite
+  only for scholarly-first domains, Wikipedia never cited, section word weights from step 1,
+  `udr run <run_id>`, a "nicht bestanden" notice in blocked exports, R14 now covers `pyphen` and
+  `pillow`.
 - The calibration candidates stop at 32768 and that value fits on this host, so a larger window is
   untested. Raise the candidate list only if a PRD change asks for it.
 - A daemon started by `udr doctor` outlives the command by design (adopted next time). Until the

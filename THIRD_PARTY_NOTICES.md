@@ -21,3 +21,10 @@
 > NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
 > OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 > CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## hyperresearch
+
+- Used in: `src/app/prompts/shims.py` (shim texts copied verbatim from `hyperresearch/core/levers.py`)
+  and `src/app/prompts/research.py` (prompts adapted from the step skills and agent prompts).
+- Source: hyperresearch 0.11.1 by Jordan Gibbs.
+- License: MIT, "Copyright (c) 2026 Jordan Gibbs"; the MIT terms are reproduced above.
