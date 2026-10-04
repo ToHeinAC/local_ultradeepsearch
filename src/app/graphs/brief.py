@@ -278,6 +278,11 @@ class _Nodes:
         if session.brief_text is None or session.brief_sha256 != decision.sha256:
             raise StaleBrief("the hash does not belong to the current brief")
         path = archive_brief(self._d.briefs_dir, session.brief_text, decision.at)
+        shown = build_context(state, self._d.templates, self._d.formats).settings
+        if session.status != "approved":  # the run copies the settings the brief shows
+            self._d.store.set_settings(
+                state["session_id"], shown.report_language, shown.response_format, shown.template_id
+            )
         run = self._d.runs.approve(
             state["session_id"],
             sha256=decision.sha256,

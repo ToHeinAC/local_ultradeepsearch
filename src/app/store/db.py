@@ -142,8 +142,39 @@ ALTER TABLE runs ADD COLUMN status TEXT NOT NULL DEFAULT 'created';
 CREATE UNIQUE INDEX runs_session ON runs(session_id) WHERE session_id IS NOT NULL;
 """
 
+MIGRATION_3 = """
+ALTER TABLE runs ADD COLUMN report_language TEXT;
+ALTER TABLE runs ADD COLUMN response_format TEXT;
+ALTER TABLE runs ADD COLUMN template_id TEXT;
+ALTER TABLE runs ADD COLUMN approved_at TEXT;
+ALTER TABLE runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'session';
+ALTER TABLE runs ADD COLUMN status_reason TEXT NOT NULL DEFAULT '';
+UPDATE runs SET
+  report_language = (SELECT report_language FROM sessions s WHERE s.session_id = runs.session_id),
+  response_format = (SELECT response_format FROM sessions s WHERE s.session_id = runs.session_id),
+  template_id = (SELECT template_id FROM sessions s WHERE s.session_id = runs.session_id),
+  approved_at = created_at
+WHERE session_id IS NOT NULL;
+CREATE TABLE plan_queries (
+  run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+  query_id TEXT NOT NULL,
+  wave INTEGER NOT NULL,
+  item_id TEXT NOT NULL,
+  lens TEXT NOT NULL CHECK (lens IN ('breadth', 'depth', 'adversarial', 'period')),
+  channel TEXT NOT NULL CHECK (channel IN ('web', 'scholarly')),
+  original TEXT NOT NULL,
+  sent TEXT NOT NULL DEFAULT '',
+  removed_json TEXT NOT NULL DEFAULT '[]',
+  state TEXT NOT NULL
+    CHECK (state IN ('draft', 'planned', 'blocked', 'deleted', 'done', 'failed')),
+  reason TEXT NOT NULL DEFAULT '',
+  hits_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (run_id, query_id)
+);
+"""
+
 # Later milestones append their own migrations; never edit one that has shipped.
-MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2]
+MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3]
 
 
 WAL_RETRY_S = 5.0

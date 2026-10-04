@@ -16,6 +16,7 @@ from fixtures_corpus import (
     GONE,
     LOGIN_WALL,
     PDF_PAGES,
+    PROFILE,
     TOO_SHORT,
     VARIANT_1,
     VARIANT_2,
@@ -38,7 +39,6 @@ from app.llm.errors import LLMModelMissingError
 from app.pipeline.artifacts import export_note_files
 from app.pipeline.extraction import lead
 from app.pipeline.fetch import Ingested, IngestResult, Rejected
-from app.pipeline.profiles import Profile
 from app.store.models import SourceMeta
 from app.store.vault import Vault
 
@@ -382,7 +382,7 @@ def test_the_analysis_cap_holds_with_parallel_workers(tmp_path: Path) -> None:
     served: dict[str, Outcome | list[Outcome]] = {
         u: long_doc(u, 50 + i) for i, u in enumerate(urls)
     }
-    profile = Profile(credit_cap=60, source_analysis_cap=3, long_source_words=5000)
+    profile = PROFILE.model_copy(update={"source_analysis_cap": 3})
     b = build(tmp_path, served, profile=profile, models=FakeModels(analysis_delay=0.05))
     results = b.pipeline.ingest_many([(u, None) for u in urls], max_workers=4)
     assert all(isinstance(r, Ingested) and r.note.stage == "complete" for r in results)

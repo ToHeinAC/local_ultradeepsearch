@@ -4,7 +4,14 @@ import pytest
 from pydantic import ValidationError
 from support import make_settings
 
-from app.pipeline.profiles import load_phase1, load_profile, load_response_formats
+from app.pipeline.profiles import (
+    load_gate_config,
+    load_phase1,
+    load_profile,
+    load_readability_config,
+    load_research_config,
+    load_response_formats,
+)
 from app.pipeline.strategies import (
     DomainStrategy,
     HostRule,
@@ -72,37 +79,159 @@ citations = [80, 150]
 """
 
 
-def write_profiles(tmp_path: Path, text: str, *, rest: str = PHASE1 + FORMATS) -> Path:
-    (tmp_path / "profiles.toml").write_text(text + rest, encoding="utf-8")
-    return tmp_path
-
-
-TIERS = """
-[light]
-credit_cap = 1
-source_analysis_cap = 1
-long_source_words = 1
-[full]
-credit_cap = 1
-source_analysis_cap = 1
-long_source_words = 1
+SECTIONS = """
+[research]
+coverage_iterations = 3
+section_weight_bounds = [0.5, 2.0]
+section_min_words = 80
+passages_per_note = 2
+passage_chars = 1200
+max_citations_per_bracket = 3
+hunk_max_old_chars = 1200
+[readability]
+merge_max_chars = 300
+paragraph_target_chars = [500, 1000]
+break_min_chars = 1500
+split_min_chars = 150
+added_words_max = 5
+connector_words_max = 3
+[gate]
+fix_rounds = 3
+length_tolerance = [0.8, 1.2]
+citation_density_min = 9
+quote_min_words = 5
+retraction_window_chars = 200
+language_sample_chars = 1000
 """
 
 
+def write_profiles(
+    tmp_path: Path, text: str, *, rest: str = PHASE1 + FORMATS, sections: str = SECTIONS
+) -> Path:
+    (tmp_path / "profiles.toml").write_text(text + rest + sections, encoding="utf-8")
+    return tmp_path
+
+
+TIER_BODY = """credit_cap = 1
+source_analysis_cap = 1
+long_source_words = 1
+planned_searches = [8, 20]
+adversarial_min = 5
+results_per_query = 10
+candidate_urls = [20, 40]
+deduped_urls = [15, 30]
+wave2_urls = 10
+wave2_queries_per_item = 3
+fetch_waves = 2
+sources_min = 10
+sources_target = [15, 25]
+thin_sources = 1
+must_read_notes = [8, 15]
+readability_cap = 50
+"""
+TIERS = f"[light]\n{TIER_BODY}[full]\n{TIER_BODY}"
+
+
 def test_a_misspelled_profile_key_is_rejected(tmp_path: Path) -> None:
-    body = "credit_cap = 1\nsource_analysis_cap = 1\nlong_source_words = 1\n"
-    directory = write_profiles(tmp_path, f"[light]\n{body}credit_capp = 2\n[full]\n{body}")
+    directory = write_profiles(
+        tmp_path, f"[light]\n{TIER_BODY}credit_capp = 2\n[full]\n{TIER_BODY}"
+    )
     with pytest.raises(ValidationError, match="credit_capp"):
         load_profile("light", directory)
 
 
+def test_a_missing_profile_key_is_rejected(tmp_path: Path) -> None:
+    directory = write_profiles(tmp_path, TIERS.replace("thin_sources = 1\n", "", 1))
+    with pytest.raises(ValidationError, match="thin_sources"):
+        load_profile("light", directory)
+
+
 def test_non_positive_budgets_are_rejected(tmp_path: Path) -> None:
-    body = "source_analysis_cap = 1\nlong_source_words = 1\n"
-    directory = write_profiles(
-        tmp_path, f"[light]\ncredit_cap = 0\n{body}[full]\ncredit_cap = 1\n{body}"
-    )
+    body = TIER_BODY.replace("credit_cap = 1", "credit_cap = 0")
+    directory = write_profiles(tmp_path, f"[light]\n{TIER_BODY}[full]\n{body}")
     with pytest.raises(ValidationError):
         load_profile("full", directory)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("planned_searches = [8, 20]", "planned_searches = [20, 8]"),
+        ("must_read_notes = [8, 15]", "must_read_notes = [0, 15]"),
+        ("fetch_waves = 2", "fetch_waves = 0"),
+    ],
+)
+def test_bad_tier_numbers_are_rejected(tmp_path: Path, old: str, new: str) -> None:
+    light = TIER_BODY.replace(old, new)
+    directory = write_profiles(tmp_path, f"[light]\n{light}[full]\n{TIER_BODY}")
+    with pytest.raises(ValidationError):
+        load_profile("light", directory)
+
+
+def test_tier_research_numbers_match_the_plan() -> None:
+    light = load_profile("light", config_dir())
+    full = load_profile("full", config_dir())
+    assert (light.planned_searches, light.adversarial_min, light.results_per_query) == (
+        (8, 20),
+        5,
+        10,
+    )
+    assert (light.candidate_urls, light.deduped_urls, light.wave2_urls) == ((20, 40), (15, 30), 10)
+    assert (light.wave2_queries_per_item, light.fetch_waves, light.sources_min) == (3, 2, 10)
+    assert (light.sources_target, light.thin_sources, light.must_read_notes) == (
+        (15, 25),
+        1,
+        (8, 15),
+    )
+    assert light.readability_cap == 50
+    assert (full.planned_searches, full.candidate_urls, full.deduped_urls) == (
+        (40, 100),
+        (80, 120),
+        (60, 100),
+    )
+    assert (full.wave2_urls, full.fetch_waves, full.sources_min, full.sources_target) == (
+        40,
+        3,
+        45,
+        (55, 80),
+    )
+    assert full.must_read_notes == (20, 50)
+
+
+def test_research_readability_and_gate_numbers_match_the_plan() -> None:
+    research = load_research_config(config_dir())
+    assert (research.coverage_iterations, research.section_weight_bounds) == (3, (0.5, 2.0))
+    assert (research.section_min_words, research.passages_per_note) == (80, 2)
+    assert (research.passage_chars, research.max_citations_per_bracket) == (1200, 3)
+    assert research.hunk_max_old_chars == 1200
+    readability = load_readability_config(config_dir())
+    assert (readability.merge_max_chars, readability.paragraph_target_chars) == (300, (500, 1000))
+    assert (readability.break_min_chars, readability.split_min_chars) == (1500, 150)
+    assert (readability.added_words_max, readability.connector_words_max) == (5, 3)
+    gate = load_gate_config(config_dir())
+    assert (gate.fix_rounds, gate.length_tolerance, gate.citation_density_min) == (
+        3,
+        (0.8, 1.2),
+        9,
+    )
+    assert (gate.quote_min_words, gate.retraction_window_chars) == (5, 200)
+    assert gate.language_sample_chars == 1000
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("section_weight_bounds = [0.5, 2.0]", "section_weight_bounds = [2.0, 0.5]"),
+        ("coverage_iterations = 3", "coverage_iterations = 0"),
+        ("length_tolerance = [0.8, 1.2]", "length_tolerance = [1.2, 0.8]"),
+        ("paragraph_target_chars = [500, 1000]", "paragraph_target_chars = [1000, 500]"),
+        ("fix_rounds = 3\n", ""),
+    ],
+)
+def test_bad_section_numbers_are_rejected(tmp_path: Path, old: str, new: str) -> None:
+    directory = write_profiles(tmp_path, TIERS, sections=SECTIONS.replace(old, new))
+    with pytest.raises(ValidationError):
+        load_research_config(directory)
 
 
 def test_a_missing_file_is_an_error(tmp_path: Path) -> None:

@@ -463,6 +463,18 @@ def test_concurrent_approvals_make_exactly_one_run(r: Rig) -> None:
     assert r.parts.db.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
 
 
+def test_the_run_carries_the_shown_settings_when_none_were_changed(r: Rig) -> None:
+    view = at_decision(r)
+    r.service.approve(view.session_id, str(view.brief_sha256), "light")
+    run = r.parts.runs.run_for_session(view.session_id)
+    assert run is not None
+    assert (run.report_language, run.response_format, run.template_id) == (
+        "de",
+        TIER["response_format"],
+        "auto",
+    )
+
+
 def test_approval_works_after_save_and_hand_edit(r: Rig) -> None:
     view = at_decision(r)
     r.service.save(view.session_id)

@@ -25,7 +25,7 @@ from app.llm.types import ChatReply, ChatRequest, Endpoint
 from app.pipeline.analysis import SourceAnalyzer
 from app.pipeline.extraction import Focus, NoteExtractor
 from app.pipeline.fetch import FetchPipeline
-from app.pipeline.profiles import Profile
+from app.pipeline.profiles import Profile, load_profile
 from app.pipeline.strategies import SourceStrategies, load_strategies
 from app.store.models import SourceMeta
 from app.store.vault import Vault
@@ -216,7 +216,7 @@ FOCUS = Focus(
     title="Decommissioning of research reactors",
     questions=("How long does dismantling take?", "What does it cost?"),
 )
-PROFILE = Profile(credit_cap=60, source_analysis_cap=6, long_source_words=5000)
+PROFILE = load_profile("light", make_settings().config_dir)  # credit cap 60, 6 analyses
 URLS = {Endpoint.OWN: "http://own", Endpoint.SHARED: "http://shared"}
 
 

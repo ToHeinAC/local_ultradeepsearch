@@ -5,11 +5,63 @@
 credit_cap = 60             # Tavily credits per run
 source_analysis_cap = 6     # long-source analyses per run
 long_source_words = 5000    # a source this long gets a summarize-role map-reduce analysis
+planned_searches = [8, 20]  # wave-1 queries
+adversarial_min = 5
+results_per_query = 10      # Tavily max_results (PRD 3.3)
+candidate_urls = [20, 40]   # hits considered before deduplication
+deduped_urls = [15, 30]     # URLs fetched in wave 1
+wave2_urls = 10             # extra URLs fetched in wave 2
+wave2_queries_per_item = 3
+fetch_waves = 2
+sources_min = 10
+sources_target = [15, 25]
+thin_sources = 1            # an item with this many sources or fewer is thin
+must_read_notes = [8, 15]
+readability_cap = 50
 
-[full]
+[full]                      # seeded from PRD 3.8; the research numbers are used from M8
 credit_cap = 300
 source_analysis_cap = 6
 long_source_words = 5000
+planned_searches = [40, 100]
+adversarial_min = 5
+results_per_query = 10
+candidate_urls = [80, 120]
+deduped_urls = [60, 100]
+wave2_urls = 40
+wave2_queries_per_item = 3
+fetch_waves = 3
+sources_min = 45
+sources_target = [55, 80]
+thin_sources = 1
+must_read_notes = [20, 50]
+readability_cap = 50
+
+# Research steps of both tiers (PRD M5).
+[research]
+coverage_iterations = 3
+section_weight_bounds = [0.5, 2.0]
+section_min_words = 80        # no section budget below this
+passages_per_note = 2         # passages per must-read note and section
+passage_chars = 1200
+max_citations_per_bracket = 3
+hunk_max_old_chars = 1200
+
+[readability]
+merge_max_chars = 300         # adjacent paragraphs shorter than this may merge
+paragraph_target_chars = [500, 1000]
+break_min_chars = 1500
+split_min_chars = 150
+added_words_max = 5           # words make-list / make-table may add (labels, headers)
+connector_words_max = 3       # connector words merge / split may add or drop
+
+[gate]
+fix_rounds = 3
+length_tolerance = [0.8, 1.2]
+citation_density_min = 9      # citations per 1000 body words
+quote_min_words = 5
+retraction_window_chars = 200
+language_sample_chars = 1000
 
 # Phase 1 (the brief): interview and upload limits (PRD M4).
 [phase1]

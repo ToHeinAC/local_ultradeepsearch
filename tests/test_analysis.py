@@ -19,7 +19,7 @@ from app.pipeline.analysis import (
     render_analysis,
 )
 from app.pipeline.extraction import Focus
-from app.pipeline.profiles import Profile
+from app.pipeline.profiles import load_profile
 from app.pipeline.schemas import SourceAnalysis
 
 FOCUS = Focus(title="Decommissioning of research reactors", questions=("How long does it take?",))
@@ -241,7 +241,7 @@ def test_a_failing_intermediate_reduce_means_no_analysis() -> None:
 
 # ---- who gets an analysis -------------------------------------------------------------------
 
-PROFILE = Profile(credit_cap=60, source_analysis_cap=6, long_source_words=5000)
+PROFILE = load_profile("light", make_settings().config_dir)  # credit cap 60, 6 analyses
 
 
 @pytest.mark.parametrize(
