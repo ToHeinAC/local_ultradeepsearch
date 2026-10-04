@@ -3,7 +3,7 @@
 import os
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -36,17 +36,24 @@ from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
 from app.doctor import DoctorSnapshot
-from app.events import EventSink
+from app.events import EventSink, JsonlEventSink
 from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph, open_checkpointer
+from app.graphs.research import ResearchRunner, build_research_graph
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
 from app.llm.types import Endpoint, Role, RoleSpec, Transport
 from app.pipeline.analysis import SourceAnalyzer
 from app.pipeline.extraction import Focus, NoteExtractor
 from app.pipeline.fetch import Fetcher, FetchPipeline
-from app.pipeline.profiles import load_phase1, load_profile, load_response_formats
+from app.pipeline.profiles import Profile, load_phase1, load_profile, load_response_formats
 from app.pipeline.strategies import load_strategies
+from app.research.context import ContextBuilders, ContextFactory
+from app.research.models import RunSpec
+from app.research.ports import ResearchGateway
+from app.research.service import ResearchDeps, ResearchService
+from app.research.steps import LightSteps
 from app.store.db import Database
+from app.store.research import ResearchStore
 from app.store.runs import RunStore
 from app.store.sessions import SessionStore
 from app.store.vault import Vault
@@ -57,6 +64,7 @@ DENYLIST_FILE = "denylist.txt"
 TAVILY_LEDGER_FILE = "tavily-ledger.json"
 VAULT_FILE = "udr.sqlite"
 CHECKPOINT_FILE = "checkpoints.sqlite"
+GatewayFactory = Callable[[str, Path, str, Profile, EventSink], ResearchGateway]
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 TIERS = ("light", "full")
 MIB = 1024 * 1024
@@ -182,6 +190,7 @@ def build_gateway(
     credit_cap: int,
     confidential_context: str,
     providers: Providers | None = None,
+    events: EventSink | None = None,
 ) -> OutboundGateway:
     """The outbound gateway of one run: its log in ``run_dir``, shared denylist and month ledger."""
     settings = rt.settings
@@ -195,7 +204,7 @@ def build_gateway(
         month_ledger=MonthLedger(
             settings.data_dir / TAVILY_LEDGER_FILE, settings.tavily_monthly_limit
         ),
-        events=rt.events,
+        events=events or rt.events,
         internal_domains=settings.internal_domains,
     )
 
@@ -222,6 +231,7 @@ def build_pipeline(
     focus: Focus,
     confidential_context: str = "",
     fetcher: Fetcher | None = None,
+    events: EventSink | None = None,
 ) -> FetchPipeline:
     """The ingestion pipeline of one run. Call ``resume()`` before new work (PRD AD10).
 
@@ -240,6 +250,7 @@ def build_pipeline(
             directory,
             credit_cap=profile.credit_cap,
             confidential_context=confidential_context,
+            events=events,
         ),
         extractor=NoteExtractor(rt.service, rt.events),
         analyzer=SourceAnalyzer(rt.service, rt.events),
@@ -247,7 +258,7 @@ def build_pipeline(
         profile=profile,
         focus=focus,
         run_dir=directory,
-        events=rt.events,
+        events=events or rt.events,
     )
 
 
@@ -300,6 +311,91 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
             templates=templates,
             formats=formats,
             drafts_dir=drafts_dir,
+            now=now,
+        )
+    )
+
+
+def _llm_for(rt: Runtime, spec: RunSpec) -> LLMService:
+    """The runtime service, or one whose `summarize` role uses the approved `summarize_model`."""
+    if not spec.summarize_model:
+        return rt.service
+    registry = {**rt.registry}
+    registry[Role.SUMMARIZE] = replace(registry[Role.SUMMARIZE], model=spec.summarize_model)
+    return LLMService(
+        registry, rt.urls, rt.transport, rt.events, timeout_s=rt.settings.llm_timeout_s
+    )
+
+
+def _context_builders(
+    rt: Runtime, gateway_factory: GatewayFactory | None, fetcher: Fetcher | None
+) -> ContextBuilders:
+    settings = rt.settings
+
+    def gateway(
+        run_id: str, directory: Path, brief: str, profile: Profile, events: EventSink
+    ) -> OutboundGateway:
+        return build_gateway(
+            rt, directory, credit_cap=profile.credit_cap, confidential_context=brief, events=events
+        )
+
+    def pipeline(
+        run_id: str, gw: ResearchGateway, focus: Focus, profile: Profile, events: EventSink
+    ) -> FetchPipeline:
+        return build_pipeline(
+            rt, run_id, tier="light", focus=focus, fetcher=fetcher or gw, events=events
+        )
+
+    return ContextBuilders(
+        run_dir=lambda run_id: run_dir(settings, run_id),
+        events=lambda directory: JsonlEventSink(directory / "events.jsonl"),
+        llm=lambda spec: _llm_for(rt, spec),
+        gateway=gateway_factory or gateway,
+        vault=lambda run_id: open_vault(settings, run_id),
+        pipeline=pipeline,
+    )
+
+
+def build_research_service(
+    rt: Runtime,
+    *,
+    now: Callable[[], datetime] = _utcnow,
+    gateway_factory: GatewayFactory | None = None,
+    fetcher: Fetcher | None = None,
+) -> ResearchService:
+    """The Phase-2 service: runs on ``data/udr.sqlite`` and the checkpointer in
+    ``data/checkpoints.sqlite``. ``gateway_factory`` and ``fetcher`` replace the real outbound
+    gateway (tests). Call ``resume(run_id)`` to continue a run a crash left unfinished."""
+    settings = rt.settings
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    db = Database(settings.data_dir / VAULT_FILE)
+    runs, store = RunStore(db), ResearchStore(db)
+    templates = load_report_templates(settings)
+    formats = load_response_formats(settings.config_dir)
+    contexts = ContextFactory(
+        runs=runs,
+        store=store,
+        templates=templates,
+        formats=formats,
+        config_dir=settings.config_dir,
+        build=_context_builders(rt, gateway_factory, fetcher),
+    )
+    steps = LightSteps(contexts)
+    graph = build_research_graph(steps, open_checkpointer(settings.data_dir / CHECKPOINT_FILE))
+    return ResearchService(
+        ResearchDeps(
+            runs=runs,
+            store=store,
+            runner=ResearchRunner(graph),
+            steps=steps,
+            templates=templates,
+            formats=formats,
+            briefs_dir=settings.data_dir / "briefs",
+            run_dir=lambda run_id: run_dir(settings, run_id),
+            credits=lambda run_id: OutboundLog(
+                run_dir(settings, run_id) / "outbound.jsonl"
+            ).total_credits(),
+            load_denylist=lambda: Denylist.load(settings.data_dir / DENYLIST_FILE),
             now=now,
         )
     )
