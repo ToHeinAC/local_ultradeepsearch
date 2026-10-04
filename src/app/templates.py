@@ -75,10 +75,26 @@ def _normalize(heading: str) -> str:
     return " ".join(heading.split()).casefold()
 
 
-def _is_reserved(heading: str) -> bool:
+def is_reserved_heading(heading: str) -> bool:
     norm = _normalize(heading)
     first = _FIRST_WORD.match(norm)
     return norm in RESERVED_TITLES or (first is not None and first.group() in RESERVED_FIRST_WORDS)
+
+
+def heading_problem(headings: Sequence[str]) -> str | None:
+    """Why ``headings`` cannot be a report's H2 list (the template rules), or None if they can."""
+    if not MIN_SECTIONS <= len(headings) <= MAX_SECTIONS:
+        return f"needs {MIN_SECTIONS} to {MAX_SECTIONS} headings, has {len(headings)}"
+    seen: set[str] = set()
+    for heading in headings:
+        if not heading.strip():
+            return "a heading is empty"
+        if is_reserved_heading(heading):
+            return f"heading {heading!r} is reserved (Sources/Appendix)"
+        if _normalize(heading) in seen:
+            return f"duplicate heading {heading!r}"
+        seen.add(_normalize(heading))
+    return None
 
 
 def _front_fields(front: str, source: str) -> dict[str, str]:
@@ -131,7 +147,7 @@ def _sections(body: str, source: str) -> tuple[Section, ...]:
         end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
         comment = _COMMENT.search(body[match.end() : end])
         heading = match["title"].strip()
-        if _is_reserved(heading):
+        if is_reserved_heading(heading):
             raise TemplateError(f"{source}: heading {heading!r} is reserved (Sources/Appendix)")
         if _normalize(heading) in seen:
             raise TemplateError(f"{source}: duplicate heading {heading!r}")

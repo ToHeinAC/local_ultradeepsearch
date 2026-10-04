@@ -17,3 +17,12 @@ class RunSpec:
     response_format: str
     report_language: str
     summarize_model: str | None
+
+
+@dataclass(frozen=True)
+class Item:
+    """One searchable atomic item of step 1: a sub-question, an entity or a time period."""
+
+    item_id: str  # i01, i02, ... in that order
+    kind: str  # "sub_question", "entity" or "period"
+    text: str
