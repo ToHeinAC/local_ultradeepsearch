@@ -4,7 +4,8 @@ Every step saves its progress, so a stopped session continues where it stopped (
 - the files are written (complete or not at all) before their rows, and a failed batch removes
   what it wrote;
 - extraction (and OCR) is saved once per file, distillation once per part of a file;
-- the digest is rebuilt when a file finished, or when facts exist and the digest is still empty.
+- a file is `distilled` only together with the digest that covers it (one transaction), so a
+  crash while digesting rebuilds the digest from the saved parts.
 Phase 1 makes no outbound requests: this module talks to local models only.
 """
 
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 from app.brief.digest import FactLine, build_digest
-from app.brief.errors import NotFound, UploadRejected
+from app.brief.errors import UploadRejected
 from app.brief.labels import labels_for
 from app.brief.schemas import UploadFacts
 from app.documents import (
@@ -359,7 +360,7 @@ class UploadIngestor:
         return next(r for r in self._store.uploads(session_id) if r.file_id == file_id)
 
     def _advance(self, session_id: str, row: UploadRow, question: str) -> bool:
-        """Bring one file to `distilled`; False if its bytes are missing from disk."""
+        """Extract and distil every part of one file; False if its bytes are missing from disk."""
         path = self._path(session_id, row.sha256, row.kind)
         if not path.is_file():
             self._events.emit("upload_file_missing", level="warning", name=row.name)
@@ -369,26 +370,25 @@ class UploadIngestor:
             self._store.save_pages(session_id, row.file_id, pages, warnings)
             row = self._row(session_id, row.file_id)
         self._distill(session_id, row, question)
-        self._store.mark_distilled(session_id, row.file_id)
         return True
 
     # ---- the digest -----------------------------------------------------------------------
 
     def _refresh_digest(
-        self, session_id: str, question: str, language: str, *, changed: bool
-    ) -> bool:
-        session = self._store.get(session_id)
-        if session is None:
-            raise NotFound(session_id)
-        rows = [r for r in self._store.uploads(session_id) if r.stage == "distilled"]
+        self, session_id: str, question: str, language: str, ready: Sequence[str]
+    ) -> None:
+        """Rebuild the digest over the distilled files and ``ready`` (finished, not yet covered)."""
+        rows = [
+            r
+            for r in self._store.uploads(session_id)
+            if r.stage == "distilled" or r.file_id in ready
+        ]
         facts = [
             FactLine(row.name, page, fact)
             for row in rows
             for part_facts in self._store.parts(session_id, row.file_id).values()
             for fact, page in part_facts
         ]
-        if not changed and not (facts and not session.upload_digest):
-            return False
         pages: dict[str, int] = {}
         for row in rows:
             pages[row.name] = max(pages.get(row.name, 0), len(row.page_texts))
@@ -401,15 +401,17 @@ class UploadIngestor:
             labels=labels_for(language),
             limits=self._limits,
         )
-        self._store.set_digest(session_id, digest.text, digest.notice)
-        return True
+        self._store.set_digest(session_id, digest.text, digest.notice, distilled=ready)
 
     def process(self, session_id: str, question: str, language: str) -> bool:
         """Read and distil every file that is not finished, then refresh the digest.
 
         Safe to call again after any interruption; returns whether anything was done."""
-        changed = False
-        for row in self._store.uploads(session_id):
-            if row.stage != "distilled" and self._advance(session_id, row, question):
-                changed = True
-        return self._refresh_digest(session_id, question, language, changed=changed)
+        ready = [
+            row.file_id
+            for row in self._store.uploads(session_id)
+            if row.stage != "distilled" and self._advance(session_id, row, question)
+        ]
+        if ready:
+            self._refresh_digest(session_id, question, language, ready)
+        return bool(ready)

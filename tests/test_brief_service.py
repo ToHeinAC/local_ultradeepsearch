@@ -210,6 +210,15 @@ def test_files_can_be_added_while_questions_are_open_and_are_read_next_round(
     assert "Ein Fakt aus der Datei." in r.models.prompts_seen["assess"][1]
 
 
+def test_files_added_in_the_last_round_are_read_before_the_draft(r: Rig) -> None:
+    view = r.service.start(QUESTION)
+    r.service.add_files(view.session_id, [a_pdf()])
+    after = r.service.answer(view.session_id, kinds("accept", "accept"), genug=True)
+    assert [u.stage for u in after.uploads] == ["distilled"]
+    assert "Ein Fakt aus der Datei." in r.models.prompts_seen["draft"][0]
+    assert r.models.count("assess") == 1  # "genug" still ends the rounds
+
+
 def test_files_cannot_be_added_once_the_brief_is_drafted(r: Rig) -> None:
     view = at_decision(r)
     with pytest.raises(WrongState):

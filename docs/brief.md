@@ -8,6 +8,7 @@ Nothing in it uses the Internet, and no run can exist without an approved brief.
 
 ```
 ingest_uploads -> assess -> ask (interrupt) -> ingest_uploads ...      the question rounds
+ingest_uploads -> draft_brief          after the last round (files added in it are read too)
                       \-> offer (interrupt) -> strengthen_brief | install_verbatim
 draft_brief -> recommend -> decide (interrupt) -> revise | edit | settings | save -> decide
                                               \-> finalize -> END (a queued run exists)
@@ -69,8 +70,9 @@ recommendation). One lock per session means the first of two approvals wins.
 - LangGraph runs an interrupted node again from its start, so `ask`, `offer` and `decide` do no
   model work and write nothing before the interrupt. Every other node is idempotent, and `finalize`
   returns the same archive file and the same run when it runs twice.
-- Uploads save per file (text and OCR once) and per part of distillation; the digest is rebuilt if
-  a file finished or facts exist but the digest is empty.
+- Uploads save per file (text and OCR once) and per part of distillation. A file becomes
+  `distilled` in the same transaction as the digest that covers it, so a crash while digesting
+  rebuilds the digest from the saved parts.
 - `recover()` after a restart removes sessions that never got going, continues those that stopped
   between steps and cleans orphan upload files. A model error does not lose a session: the view
   says `waiting_for == "work"` with the error, and `retry` continues.

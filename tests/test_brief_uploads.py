@@ -713,7 +713,7 @@ def test_a_crash_while_digesting_does_not_distil_again(tmp_path: Path) -> None:
     first.ingestor.accept(first.session_id, [pdf()])
     with pytest.raises(Crash):
         first.process()
-    assert first.store.uploads(first.session_id)[0].stage == "distilled"
+    assert first.store.uploads(first.session_id)[0].stage == "extracted"  # not in a digest yet
     assert first.store.get(first.session_id).upload_digest == ""  # type: ignore[union-attr]
 
     second = rig(tmp_path, Models(), again=first)
@@ -722,3 +722,20 @@ def test_a_crash_while_digesting_does_not_distil_again(tmp_path: Path) -> None:
     assert len(second.models.digest_calls) == 1
     assert second.store.get(second.session_id).upload_digest != ""  # type: ignore[union-attr]
     assert second.process() is False  # and now nothing is left to do
+
+
+def test_a_crash_while_digesting_a_later_file_still_adds_it(tmp_path: Path) -> None:
+    first = rig(tmp_path, Models())
+    first.ingestor.accept(first.session_id, [pdf("a.pdf")])
+    first.process()  # a.pdf is in the digest
+    first.ingestor.accept(first.session_id, [pdf("b.pdf", (text_page(7),))])
+    first.models.crash_on_digest = True
+    with pytest.raises(Crash):
+        first.process()
+
+    second = rig(tmp_path, Models(), again=first)
+    assert second.process() is True
+    assert second.models.facts_calls == []  # b.pdf's facts were saved before the crash
+    digest = second.store.get(second.session_id).upload_digest  # type: ignore[union-attr]
+    assert "(a.pdf, S. 1)" in digest
+    assert "(b.pdf, S. 1)" in digest

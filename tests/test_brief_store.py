@@ -222,14 +222,26 @@ def test_parts_are_idempotent_and_ordered(sessions: SessionStore) -> None:
     assert list(parts) == [0, 1]  # in part order, whatever the insertion order
 
 
-def test_a_file_is_distilled_only_after_extraction(sessions: SessionStore) -> None:
+def test_a_file_is_distilled_only_after_extraction_and_with_its_digest(
+    sessions: SessionStore,
+) -> None:
     session_id = sessions.create("de").session_id
     (row,) = sessions.add_uploads(session_id, [upload()])
-    assert not sessions.mark_distilled(session_id, row.file_id)  # still `stored`
+    sessions.set_digest(session_id, "d1", "", distilled=[row.file_id])
+    assert sessions.uploads(session_id)[0].stage == "stored"  # not extracted yet
     sessions.save_pages(session_id, row.file_id, ["x"], [])
-    assert sessions.mark_distilled(session_id, row.file_id)
+    sessions.set_digest(session_id, "d2", "", distilled=[row.file_id])
     assert sessions.uploads(session_id)[0].stage == "distilled"
-    assert not sessions.mark_distilled(session_id, row.file_id)
+    assert sessions.get(session_id).upload_digest == "d2"  # type: ignore[union-attr]
+
+
+def test_set_digest_of_an_unknown_session_marks_nothing(sessions: SessionStore) -> None:
+    session_id = sessions.create("de").session_id
+    (row,) = sessions.add_uploads(session_id, [upload()])
+    sessions.save_pages(session_id, row.file_id, ["x"], [])
+    with pytest.raises(NotFound):
+        sessions.set_digest("s000000000000", "d", "", distilled=[row.file_id])
+    assert sessions.uploads(session_id)[0].stage == "extracted"
 
 
 def test_delete_session_removes_it_with_everything_it_owns(
