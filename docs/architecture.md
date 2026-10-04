@@ -4,16 +4,16 @@
 
 | Layer | Where | Rule |
 |---|---|---|
-| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `text`, `templates`, `documents`, `store/`, `pipeline/`, `brief/`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
+| Core logic | `config`, `llm/{types,roles,structured,service,errors}`, `events`, `artifacts`, `text`, `templates`, `documents`, `store/`, `pipeline/`, `brief/`, `research/`, `calibration`, `doctor` | Typed. I/O only through injected collaborators (a `Transport`, an `EventSink`, a `/api/ps` probe), so it is tested without a network. |
 | Adapters | `adapters/ollama_transport`, `adapters/ollama_instance`, `adapters/system_probe`, `adapters/outbound/` | The only code that opens connections or starts processes. Ollama adapters accept loopback URLs only; everything bound for the internet goes through `adapters/outbound/` (enforced by `tests/test_egress_guard.py`). |
-| Graphs | `graphs/` | The only code that imports LangGraph (`tests/test_layer_rules.py`). Nodes call core logic; the rest of the code talks to a graph through `BriefRunner`. |
+| Graphs | `graphs/` | The only code that imports LangGraph (`tests/test_layer_rules.py`). Nodes call core logic; the rest of the code talks to a graph through `BriefRunner` or `ResearchRunner`. |
 | Composition root | `bootstrap` | The one place that picks real adapters and wires them into a `Runtime`. |
 | Entry points | `cli` (`udr`) | Thin: build the runtime, call pure logic, print. |
 
 Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
 LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
 [llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md),
-[vault.md](vault.md), [brief.md](brief.md).
+[vault.md](vault.md), [brief.md](brief.md), [research.md](research.md).
 
 ## Quality gate flow
 
@@ -46,6 +46,9 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
   the background, and a real SIGKILL test showed it loses the last steps ([brief.md](brief.md)).
 - **Phase 1 never reaches the Internet.** Its modules do not import the outbound package (an AST
   test and a fresh-process test), so "zero outbound requests" is structural, not a promise.
+- **The owner approves what is sent.** The plan hash covers the sanitized query texts, never the
+  local originals, and the approval re-checks every text against a freshly loaded denylist
+  ([research.md](research.md)).
 - **Confidentiality fails closed, availability fails open.** A sanitizer error blocks the query.
   An exhausted or invalid Tavily account switches the run to ddgs instead of failing it.
 - **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared

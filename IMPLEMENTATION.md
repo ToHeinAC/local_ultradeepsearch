@@ -14,7 +14,8 @@ Rules: [AGENTS.md](AGENTS.md). Design: [docs/architecture.md](docs/architecture.
 | Machine check | `uv run udr doctor` (`--json`; `--calibrate` measures the reason context) |
 | Denylist | `uv run udr denylist add <term>...`, `remove <term>...`, `list` |
 | Phase 1: clarify and approve a brief | `uv run udr brief "<question>" [--file F]...`, `--list`, `--session <id>` (see [docs/brief.md](docs/brief.md)) |
-| Ingest sources of a run (library call; the CLI and graphs arrive later) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
+| Phase 2 (to the width sweep): start or continue a run | `uv run udr run <run_id> [--no-input]`, `uv run udr run --brief F --tier light --template ID [--yes]`, `--list` (see [docs/research.md](docs/research.md)) |
+| Ingest sources of a run (library call) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
 
 ## 2. Phase status
 
@@ -27,7 +28,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
-| 5 | M5: Lite end to end, plan gate, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | light step-sequence, G1–G12 fixtures; live Lite run |
+| 5 | M5: Lite end to end, plan gate, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | Part A (steps 0 to 2, plan gate, `udr run`) done: `test_research_*.py`, `test_cli_run.py`, a real SIGKILL in `test_research_resume.py`. Part B (steps 10 to X) and the live Lite run: planned |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
@@ -40,7 +41,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 |---|---|
 | `src/app/config.py` | `Settings` (`UDR_*` env, `.env`) and `is_loopback_url`. Ollama URLs must be loopback. |
 | `src/app/llm/` | Role registry, typed requests, the `LLMService`, structured-output helpers, errors, `ScriptedTransport` fake. See [docs/llm-layer.md](docs/llm-layer.md). |
-| `src/app/prompts/` | Prompt strings as named constants: `llm.py` (repair, calibration probe), `outbound.py` (sanitizer), `untrusted.py` (fencing of fetched and uploaded text), `notes.py` (extraction, summary merge, source analysis), `brief.py` (interview, drafting, tier, uploads). A test forbids digits outside placeholders. |
+| `src/app/prompts/` | Prompt strings as named constants: `research.py` (steps 1, 2.1, 2) and `shims.py` (upstream texts, verbatim); `llm.py` (repair, calibration probe), `outbound.py` (sanitizer), `untrusted.py` (fencing of fetched and uploaded text), `notes.py` (extraction, summary merge, source analysis), `brief.py` (interview, drafting, tier, uploads). A test forbids digits outside placeholders. |
 | `src/app/events.py` | `EventSink` protocol, thread-safe `JsonlEventSink`, `MemoryEventSink`. |
 | `src/app/artifacts.py` | Atomic, thread-safe `write_text`/`write_json` that strip `<think>`; `scrub=False` for byte-exact files. |
 | `src/app/telemetry.py` | Forces LangSmith tracing off; `app.graphs` calls it before LangGraph loads. |
@@ -48,7 +49,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/calibration.py` | Measures the largest `reason` context that fits VRAM; `calibration.json` I/O. |
 | `src/app/doctor.py` | Pure checks over a `DoctorSnapshot`; exit code and rendering. |
 | `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`. |
-| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`). Entry point `udr = app.cli:main`. |
+| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`). Entry point `udr = app.cli:main`. |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
 | `src/app/adapters/system_probe.py` | `nvidia-smi`, free disk, binary lookup, model-store discovery. |
@@ -56,10 +57,12 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/templates.py`, `templates/` | Report templates (front matter plus one H2 per section), validation, the five built-ins. |
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
-| `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
-| `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
+| `src/app/graphs/` | The only place that imports LangGraph: the `brief` and `research` graphs, their runners (synchronous checkpoints) and the checkpointer. |
+| `src/app/research/` | Phase 2 to the width sweep: `decompose.py` (step 1), `plan.py` (2.1), `sweep.py` (2), `steps.py` (`LightSteps`, one method per node), `service.py`, `console.py`, `context.py`, `manifest.py`, `journal.py`, `workspace.py`, `external.py`, `shims.py`, `schemas.py`. See [docs/research.md](docs/research.md). |
+| `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs), and `research.py` (the search-plan queries). |
 | `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
 | `config/` | `profiles.toml` (per-tier budgets) and `source_strategies.toml` (tier weights, host rules, domain sections). |
+| `tests/research_rig.py`, `tests/research_crash_child.py` | The fake gateway, scripted Phase-2 models and the wired service; the child process the Phase-2 SIGKILL test kills. |
 | `tests/brief_rig.py`, `tests/brief_crash_child.py` | The scripted model and the wired Phase-1 session; the child process the Phase-1 SIGKILL test kills. |
 | `tests/test_layer_rules.py` | Enforces that LangGraph is imported only in `src/app/graphs/`. |
 | `tests/support.py` | `make_settings()` (`Settings` that ignore any developer `.env`), `make_pdf()` (synthetic PDFs) and `make_note()`. |
@@ -115,6 +118,11 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   only for scholarly-first domains, Wikipedia never cited, section word weights from step 1,
   `udr run <run_id>`, a "nicht bestanden" notice in blocked exports, R14 now covers `pyphen` and
   `pillow`.
+- M5 Part A has run only against fakes. The real models (`reason` for steps 1 and 2.1) and the
+  real gateway have not run it; the first live run decides whether the step-1 and plan prompts
+  produce usable items, headings and queries. It waits for the owner's go-ahead.
+- Step 1 does not revise after its last coverage check; remaining gaps go to `scaffold.md`.
+  A wave-2 draft that yields no queries is drafted again on every resume.
 - The calibration candidates stop at 32768 and that value fits on this host, so a larger window is
   untested. Raise the candidate list only if a PRD change asks for it.
 - A daemon started by `udr doctor` outlives the command by design (adopted next time). Until the
