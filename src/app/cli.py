@@ -11,7 +11,7 @@ from app.adapters.ollama_instance import InstanceState
 from app.adapters.outbound.denylist import Denylist
 from app.bootstrap import DENYLIST_FILE
 from app.brief.console import ConsoleIO, run_session
-from app.brief.errors import InvalidInput, NotFound
+from app.brief.errors import InvalidInput, NotFound, WrongState
 from app.brief.service import BriefService
 from app.brief.uploads import UploadFile
 from app.calibration import CANDIDATES, CalibrationError, save_calibration
@@ -19,6 +19,9 @@ from app.doctor import evaluate, exit_code, render, render_json
 from app.events import JsonlEventSink
 from app.llm.errors import LLMError
 from app.llm.types import Role
+from app.research.console import render_plan, run_plan_review
+from app.research.errors import EmptyPlan, PlanBlocked, StalePlan, WorkerBusy
+from app.research.service import ResearchService, RunView, TierNotAvailable
 
 app = typer.Typer(help="Local UltraDeep Researcher.", no_args_is_help=True, add_completion=False)
 
@@ -152,6 +155,118 @@ def brief(
     except typer.Abort as exc:
         typer.echo(f"\nAbgebrochen. Weiter mit: udr brief --session {session_id}", err=True)
         raise typer.Exit(1) from exc
+
+
+def _research_service() -> ResearchService:
+    """The Phase-2 service on the real runtime."""
+    settings = bootstrap.load_settings()
+    events = JsonlEventSink(settings.data_dir / "events.jsonl")
+    return bootstrap.build_research_service(bootstrap.build_runtime(settings, events))
+
+
+def _fail(message: str, code: int) -> typer.Exit:
+    typer.echo(message, err=True)
+    return typer.Exit(code)
+
+
+def _report(view: RunView) -> None:
+    """Say where the run stands and exit with the matching code."""
+    again = f"Weiter mit: udr run {view.run_id}"
+    if view.status == "failed":
+        raise _fail(f"Fehlgeschlagen im Schritt {view.step}: {view.error}\n{again}", 1)
+    if view.status == "blocked":
+        checks = ", ".join(view.gate_failed)
+        raise _fail(f"Ship-Gate nicht bestanden: {checks}. Bericht: {view.report_path}", 1)
+    if view.status == "done":
+        exports = ", ".join(f"{k}: {v}" for k, v in view.exports.items())
+        typer.echo(f"Fertig: {view.report_path} ({exports})")
+    elif view.waiting_for == "plan":
+        typer.echo(f"Der Plan wartet auf die Freigabe. {again}")
+    else:
+        typer.echo(f"Status: {view.status}. {again}")
+
+
+def _show_plan_and_stop(view: RunView) -> None:
+    """`--no-input`: print the plan and the hash an approval needs."""
+    assert view.plan is not None
+    typer.echo("\n".join(render_plan(view.plan)))
+    typer.echo(f"\nFreigabe: udr run {view.run_id} --approve-plan {view.plan_sha256}")
+
+
+def _advance(
+    service: ResearchService, run_id: str, approve_plan: str | None, no_input: bool
+) -> RunView:
+    """Start or continue a run and take it through the plan gate as far as the options allow."""
+    view = service.view(run_id)
+    if view.status in ("queued", "failed", "running"):
+        view = service.run(run_id)
+    if view.status != "awaiting_plan_approval":
+        return view
+    if approve_plan:
+        return service.approve_plan(run_id, approve_plan)
+    if no_input:
+        _show_plan_and_stop(view)
+        return view
+    if run_plan_review(service, _brief_io(), run_id) == "quit":
+        raise typer.Exit(0)
+    return service.view(run_id)
+
+
+def _create_external(
+    service: ResearchService,
+    brief_file: Path,
+    tier: str | None,
+    template: str | None,
+    language: str | None,
+    response_format: str | None,
+) -> str:
+    """The run of an external brief file; running it from the owner's shell is the approval."""
+    if tier == "full":
+        raise _fail("Full-Tier ab M8.", 2)
+    if tier != "light" or not template:
+        raise _fail("--brief braucht --tier light und --template.", 2)
+    if not brief_file.is_file():
+        raise _fail(f"Datei nicht gefunden: {brief_file}", 2)
+    view = service.create_external_run(
+        brief_file.read_text(encoding="utf-8"),
+        tier=tier,
+        template_id=template,
+        language=language,
+        response_format=response_format,
+    )
+    typer.echo(f"Lauf angelegt: {view.run_id}")
+    return view.run_id
+
+
+@app.command("run")
+def run_cmd(
+    run_id: Annotated[str | None, typer.Argument(help="Ein freigegebener Lauf.")] = None,
+    brief: Annotated[Path | None, typer.Option("--brief", help="Brief aus einer Datei.")] = None,
+    tier: Annotated[str | None, typer.Option("--tier", help="light (full ab M8).")] = None,
+    template: Annotated[str | None, typer.Option("--template", help="Vorlagen-ID.")] = None,
+    language: Annotated[str | None, typer.Option("--language", help="Berichtssprache.")] = None,
+    response_format: Annotated[str | None, typer.Option("--format", help="Antwortformat.")] = None,
+    approve_plan: Annotated[
+        str | None, typer.Option("--approve-plan", help="Plan mit diesem Hash freigeben.")
+    ] = None,
+    no_input: Annotated[bool, typer.Option("--no-input", help="Keine Rückfragen.")] = False,
+) -> None:
+    """Startet oder setzt einen Recherchelauf fort (Phase 2)."""
+    if bool(run_id) == bool(brief):
+        raise _fail("Entweder eine Lauf-ID oder --brief angeben.", 2)
+    service = _research_service()
+    try:
+        if brief:
+            run_id = _create_external(service, brief, tier, template, language, response_format)
+        assert run_id is not None
+        view = _advance(service, run_id, approve_plan, no_input)
+    except WorkerBusy as exc:
+        raise _fail("Ein anderer Lauf ist aktiv.", 1) from exc
+    except (NotFound, WrongState) as exc:
+        raise _fail(f"Das ging nicht: {exc}", 1) from exc
+    except (InvalidInput, TierNotAvailable, StalePlan, PlanBlocked, EmptyPlan) as exc:
+        raise _fail(f"Das ging nicht: {exc}", 2) from exc
+    _report(view)
 
 
 denylist_app = typer.Typer(help="Terms that must never leave this machine (PRD §3.2).")
