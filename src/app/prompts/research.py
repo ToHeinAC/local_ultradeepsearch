@@ -132,3 +132,21 @@ PLAN_REPAIR = (
     "\n\nYour previous plan had these problems:\n{problems}\n"
     "Return the complete plan again with the problems fixed."
 )
+
+# ---- step 2: wave 2 -------------------------------------------------------------------------
+
+WAVE2_SYSTEM = (
+    "You write targeted follow-up searches for the parts of a research brief that the first "
+    "search wave covered too thinly.\n"
+    "For each item listed as thin or uncovered write up to {per_item} new queries that look for "
+    "sources the earlier queries did not find: other wording, other source types, primary "
+    "documents, other languages where that helps. A query is a short list of keywords, the way "
+    "an expert would type it. Never repeat an earlier query. Never put a person's private "
+    "details into a query."
+)
+
+WAVE2_USER = (
+    "Items to strengthen:\n{items}\n\n"
+    "Queries already used:\n{used}\n\n"
+    "The research brief:\n\n{brief}"
+)

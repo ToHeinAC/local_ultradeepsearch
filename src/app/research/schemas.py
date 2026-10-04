@@ -83,3 +83,12 @@ class PlannedQuery(BaseModel):
 
 class SearchPlanDraft(BaseModel):
     queries: list[PlannedQuery]
+
+
+class Wave2Query(BaseModel):
+    item_id: Line
+    query: Text
+
+
+class Wave2Draft(BaseModel):
+    queries: list[Wave2Query]
