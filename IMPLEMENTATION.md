@@ -48,7 +48,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/text.py` | `normalize_for_match` and the verbatim-quote check `contains_quote` (also used by the ship gate later). |
 | `src/app/calibration.py` | Measures the largest `reason` context that fits VRAM; `calibration.json` I/O. |
 | `src/app/doctor.py` | Pure checks over a `DoctorSnapshot`; exit code and rendering. |
-| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`. |
+| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`; `build_brief_service` and `build_research_service`. |
 | `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`). Entry point `udr = app.cli:main`. |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
