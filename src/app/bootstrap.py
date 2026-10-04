@@ -330,7 +330,6 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
 # ---- Phase 2 (M5) ---------------------------------------------------------------------------
 
 LOCK_FILE = "worker.lock"
-REPORT_CSS = "report.css"
 CONDENSE_SHARE = 0.6  # of summarize's context one condensing call may fill
 
 
@@ -360,7 +359,6 @@ def _step_deps(
         formats=load_response_formats(settings.config_dir),
         events=rt.events,
         pandoc=pandoc,
-        css=settings.templates_dir / REPORT_CSS,
         prompt_chars=(reason.num_ctx - reason.num_predict) * CHARS_PER_TOKEN,
         condense_chars=int(
             (summarize.num_ctx - summarize.num_predict) * CHARS_PER_TOKEN * CONDENSE_SHARE

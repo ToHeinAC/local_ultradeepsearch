@@ -1,4 +1,4 @@
-"""Live check of the export with the real pandoc and weasyprint. Run with `pytest -m live`.
+"""Live check of the export with the real pandoc (the DOCX). Run with `pytest -m live`.
 
 Skipped where pandoc is not installed. Nothing here touches the network or a model.
 """
@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from app.adapters.pandoc import SubprocessPandoc
-from app.config import REPO_ROOT
 from app.events import MemoryEventSink
 from app.research.export import docx_headings, export_report
 from app.research.markdown import h2_list
@@ -36,7 +35,6 @@ def test_a_rendered_report_becomes_a_docx_with_every_heading_and_a_pdf(tmp_path:
     result = export_report(
         tmp_path,
         SubprocessPandoc(),
-        css=REPO_ROOT / "templates" / "report.css",
         reference_docx=None,
         events=MemoryEventSink(),
     )

@@ -58,7 +58,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
 | `src/app/research/` | Phase 2 (M5, in progress): manifest and settings, `console.py` (the plan review of `udr run`), report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [docs/research.md](docs/research.md). |
-| `src/app/graphs/research.py`, `src/app/adapters/pandoc.py` | The `research` graph and its runner; the only code that starts pandoc. See [docs/research.md](docs/research.md). |
+| `src/app/graphs/research.py`, `src/app/adapters/pandoc.py`, `src/app/research/pdf.py` | The `research` graph and its runner; the only code that starts pandoc (DOCX only); the in-process PDF renderer. See [docs/research.md](docs/research.md). |
 | `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
 | `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
 | `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
@@ -79,12 +79,14 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 
 ## 4. Open issues
 
-- M5 (in progress): `weasyprint` was added for the PDF export. Its dependency `pyphen` is licensed
-  GPL-2.0+/LGPL-2.1+/MPL-1.1 (the user picks one), which [AGENTS.md](AGENTS.md) §5.5 treats as an
-  exception that needs the owner's approval. `uv add` also rewrote `uv.lock` in lock revision 2
-  (a newer uv), which is why that diff is large. `include_domains` hints of the domain strategies
-  are not passed to Tavily yet: they would restrict results, so M5 only ranks authoritative hosts
-  first.
+- M5 (in progress): the PDF is made in-process with `reportlab` (BSD) and `markdown-it-py` (MIT),
+  so no GPL, LGPL or MPL package is involved any more. `reportlab` brings `pillow` (MIT-CMU, the
+  permissive HPND-style licence), which is not on the example list in [AGENTS.md](AGENTS.md) §5.5;
+  the owner decides whether it needs a recorded exception. The PDF text uses the Bitstream Vera
+  fonts that ship with ReportLab: Latin text is fine, a character outside Vera is shown as `?`.
+  `uv add` also rewrote `uv.lock` in lock revision 2 (a newer uv), which is why that diff is large.
+  `include_domains` hints of the domain strategies are not passed to Tavily yet: they would
+  restrict results, so M5 only ranks authoritative hosts first.
 
 - M5 has run only against fakes. The real models and the real gateway have not run the Lite
   pipeline, so the prompts of steps 1 to 16 are unproven on real output; the German reference run

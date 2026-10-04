@@ -398,19 +398,17 @@ def make_docx(path: Path, headings: Sequence[str]) -> None:
 
 
 class FakePandoc:
-    """Writes what pandoc would: a DOCX with the report's H2s, a PDF, or nothing at all."""
+    """Writes what pandoc would: a DOCX with the report's H2s, or nothing at all."""
 
     def __init__(
         self,
         *,
         docx_headings: Sequence[str] | None = None,
-        pdf_bytes: bytes = b"%PDF-1.7\n%fake",
         code: int = 0,
         stderr: str = "",
         write: bool = True,
     ) -> None:
         self.docx_headings = docx_headings
-        self.pdf_bytes = pdf_bytes
         self.code = code
         self.stderr = stderr
         self.write = write
@@ -419,12 +417,9 @@ class FakePandoc:
     def run(self, args: Sequence[str], *, cwd: Path) -> PandocResult:
         self.calls.append((list(args), cwd))
         out = Path(args[args.index("-o") + 1])
-        if self.write and self.code == 0:
-            if out.suffix == ".docx":
-                found = self.docx_headings
-                if found is None:  # like pandoc: every H2 of the report
-                    found = h2_list((cwd / "report.md").read_text(encoding="utf-8"))
-                make_docx(cwd / out, found)
-            else:
-                (cwd / out).write_bytes(self.pdf_bytes)
+        if self.write and self.code == 0 and out.suffix == ".docx":
+            found = self.docx_headings
+            if found is None:  # like pandoc: every H2 of the report
+                found = h2_list((cwd / "report.md").read_text(encoding="utf-8"))
+            make_docx(cwd / out, found)
         return PandocResult(self.code, self.stderr)

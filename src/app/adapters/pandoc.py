@@ -1,13 +1,10 @@
 """Running pandoc (PRD M5 export). The only code that starts it; core logic gets a `PandocRunner`.
 
-pandoc is an external GPL binary: it is run, never linked or vendored (PRD R14). Its PDF engine,
-`weasyprint`, is installed with the project, so the environment's scripts directory goes first on
-the PATH of the child process.
+pandoc is an external GPL binary: it is run, never linked or vendored (PRD R14). It makes the
+DOCX only; the PDF is made in-process (`app.research.pdf`).
 """
 
-import os
 import subprocess
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -24,13 +21,10 @@ class SubprocessPandoc:
 
     def run(self, args: Sequence[str], *, cwd: Path) -> PandocResult:
         """Run pandoc with ``args`` in ``cwd``; never raises for a missing binary or a hang."""
-        scripts = str(Path(sys.executable).parent)
-        env = {**os.environ, "PATH": f"{scripts}{os.pathsep}{os.environ.get('PATH', '')}"}
         try:
             done = subprocess.run(
                 [self._binary, *args],
                 cwd=cwd,
-                env=env,
                 capture_output=True,
                 text=True,
                 timeout=self._timeout_s,

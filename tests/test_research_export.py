@@ -15,7 +15,6 @@ from app.research.export import (
     docx_args,
     docx_headings,
     export_report,
-    pdf_args,
 )
 
 REPORT = (
@@ -30,10 +29,8 @@ def run_export(
     tmp_path: Path, fake: FakePandoc, reference: Path | None = None
 ) -> tuple[ExportResult, MemoryEventSink]:
     (tmp_path / "report.md").write_text(REPORT, encoding="utf-8")
-    css = tmp_path / "report.css"
-    css.write_text("body {}", encoding="utf-8")
     events = MemoryEventSink()
-    return export_report(tmp_path, fake, css=css, reference_docx=reference, events=events), events
+    return export_report(tmp_path, fake, reference_docx=reference, events=events), events
 
 
 def test_both_formats_are_made_and_checked(tmp_path: Path) -> None:
@@ -47,41 +44,42 @@ def test_both_formats_are_made_and_checked(tmp_path: Path) -> None:
     assert docx_headings(tmp_path / "report.docx") == H2
 
 
-def test_the_commands_are_pandoc_with_the_documented_options(tmp_path: Path) -> None:
+def test_pandoc_makes_the_docx_only_and_the_pdf_never_goes_through_it(tmp_path: Path) -> None:
     ref = tmp_path / "ref.docx"
     ref.write_bytes(b"x")
     fake = FakePandoc()
     run_export(tmp_path, fake, ref)
-    (docx_call, docx_cwd), (pdf_call, _) = fake.calls
+    ((docx_call, docx_cwd),) = fake.calls
     assert docx_call == docx_args(Path("report.md"), Path("report.docx"), ref)
     assert docx_call[:2] == ["report.md", "--from=markdown"]
     assert f"--reference-doc={ref}" in docx_call
-    assert pdf_call == pdf_args(Path("report.md"), Path("report.pdf"), tmp_path / "report.css")
-    assert "--pdf-engine=weasyprint" in pdf_call
-    assert f"--css={tmp_path / 'report.css'}" in pdf_call
     assert docx_cwd == tmp_path
-    assert "--reference-doc" not in " ".join(pdf_args(Path("a.md"), Path("a.pdf"), Path("c.css")))
 
 
 def test_without_a_reference_document_the_default_styles_apply(tmp_path: Path) -> None:
     assert not any("reference-doc" in a for a in docx_args(Path("a.md"), Path("a.docx"), None))
 
 
-def test_a_missing_pandoc_fails_visibly_and_leaves_the_markdown(tmp_path: Path) -> None:
+def test_a_missing_pandoc_fails_the_docx_visibly_and_leaves_markdown_and_pdf(
+    tmp_path: Path,
+) -> None:
     result, events = run_export(tmp_path, FakePandoc(code=127))
-    assert (result.docx, result.pdf) == ("pandoc_missing", "pandoc_missing")
+    assert (result.docx, result.pdf) == ("pandoc_missing", "ok")
     assert result.ok is False
     assert (tmp_path / "report.md").read_text(encoding="utf-8") == REPORT
     assert not (tmp_path / "report.docx").exists()
-    failed = events.of_type("export_failed")
-    assert [e.level for e in failed] == ["warning", "warning"]
-    assert {e.data["reason"] for e in failed} == {"pandoc_missing"}
+    assert (tmp_path / "report.pdf").read_bytes().startswith(b"%PDF")
+    (failed,) = events.of_type("export_failed")
+    assert (failed.level, failed.data) == (
+        "warning",
+        {"format": "docx", "reason": "pandoc_missing"},
+    )
 
 
 def test_a_pandoc_error_names_the_first_line_of_what_it_said(tmp_path: Path) -> None:
-    result, _ = run_export(tmp_path, FakePandoc(code=65, stderr="weasyprint failed\nmore detail"))
-    assert result.docx == "pandoc_failed: weasyprint failed"
-    assert result.pdf == "pandoc_failed: weasyprint failed"
+    result, _ = run_export(tmp_path, FakePandoc(code=65, stderr="docx failed\nmore detail"))
+    assert result.docx == "pandoc_failed: docx failed"
+    assert result.pdf == "ok"
 
 
 def test_a_docx_without_every_heading_of_the_report_is_refused_and_removed(tmp_path: Path) -> None:
@@ -92,27 +90,67 @@ def test_a_docx_without_every_heading_of_the_report_is_refused_and_removed(tmp_p
     assert any(e.data["format"] == "docx" for e in events.of_type("export_failed"))
 
 
-def test_a_pdf_that_does_not_start_with_the_pdf_signature_is_refused_and_removed(
-    tmp_path: Path,
+def test_a_pdf_that_cannot_be_laid_out_is_a_visible_failure_and_leaves_no_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    result, _ = run_export(tmp_path, FakePandoc(pdf_bytes=b"<html>"))
-    assert result.pdf == "invalid_output: not a PDF"
+    def broken(_markdown: str, _out: Path) -> None:
+        raise RuntimeError("layout exploded\nsecond line")
+
+    monkeypatch.setattr("app.research.export.render_pdf", broken)
+    result, events = run_export(tmp_path, FakePandoc())
+    assert result.pdf == "render_failed: RuntimeError: layout exploded"
     assert not (tmp_path / "report.pdf").exists()
     assert result.docx == "ok"
+    assert any(e.data["format"] == "pdf" for e in events.of_type("export_failed"))
 
 
-def test_an_output_pandoc_did_not_write_is_refused(tmp_path: Path) -> None:
+def test_a_pdf_without_the_pdf_signature_is_refused_and_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.research.export.render_pdf", lambda _m, out: out.write_bytes(b"<html>")
+    )
+    result, _ = run_export(tmp_path, FakePandoc())
+    assert result.pdf == "invalid_output: not a PDF"
+    assert not (tmp_path / "report.pdf").exists()
+
+
+def test_a_failed_layout_does_not_leave_the_pdf_of_an_earlier_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "report.pdf").write_bytes(b"%PDF-old")
+
+    def broken(_markdown: str, _out: Path) -> None:
+        raise RuntimeError("layout exploded")
+
+    monkeypatch.setattr("app.research.export.render_pdf", broken)
+    run_export(tmp_path, FakePandoc())
+    assert not (tmp_path / "report.pdf").exists()
+
+
+def test_the_pdf_has_the_reports_text(tmp_path: Path) -> None:
+    import pypdfium2 as pdfium  # pyright: ignore[reportMissingTypeStubs]
+
+    run_export(tmp_path, FakePandoc())
+    document = pdfium.PdfDocument(str(tmp_path / "report.pdf"))
+    text = "\n".join(document[i].get_textpage().get_text_range() for i in range(len(document)))
+    document.close()
+    for expected in ("Titel", "Eins", "Zwei", "Quellen", "Anhang A — Recherche-Brief"):
+        assert expected in text
+
+
+def test_a_docx_pandoc_did_not_write_is_refused(tmp_path: Path) -> None:
     result, _ = run_export(tmp_path, FakePandoc(write=False))
-    assert (result.docx, result.pdf) == ("invalid_output: no file", "invalid_output: no file")
+    assert (result.docx, result.pdf) == ("invalid_output: no file", "ok")
 
 
-def test_stale_exports_of_an_earlier_run_are_removed_before_pandoc_runs(tmp_path: Path) -> None:
+def test_stale_exports_of_an_earlier_run_are_removed_before_they_are_made(tmp_path: Path) -> None:
     (tmp_path / "report.docx").write_bytes(b"old")
     (tmp_path / "report.pdf").write_bytes(b"%PDF-old")
     result, _ = run_export(tmp_path, FakePandoc(write=False))
     assert result.docx.startswith("invalid_output")
     assert not (tmp_path / "report.docx").exists()
-    assert not (tmp_path / "report.pdf").exists()
+    assert (tmp_path / "report.pdf").read_bytes() != b"%PDF-old"  # made again, not kept
 
 
 def test_an_empty_output_file_is_refused(tmp_path: Path) -> None:
@@ -122,15 +160,11 @@ def test_an_empty_output_file_is_refused(tmp_path: Path) -> None:
             return PandocResult(0, "")
 
     result, _ = run_export(tmp_path, Empty())
-    assert (result.docx, result.pdf) == ("invalid_output: no file", "invalid_output: no file")
+    assert (result.docx, result.pdf) == ("invalid_output: no file", "ok")
 
 
 def test_a_missing_report_cannot_be_exported(tmp_path: Path) -> None:
-    css = tmp_path / "report.css"
-    css.write_text("", encoding="utf-8")
-    result = export_report(
-        tmp_path, FakePandoc(), css=css, reference_docx=None, events=MemoryEventSink()
-    )
+    result = export_report(tmp_path, FakePandoc(), reference_docx=None, events=MemoryEventSink())
     assert (result.docx, result.pdf) == ("no_report", "no_report")
 
 
@@ -159,18 +193,6 @@ def test_the_adapter_runs_the_binary_in_the_directory_and_reports_its_exit_code(
     assert (tmp_path / "seen.txt").read_text(encoding="utf-8") == "a.md -o a.docx"
 
 
-def test_the_adapter_puts_the_environments_scripts_on_the_path_for_weasyprint(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # `uv run` would put the scripts first anyway
-    binary = script(
-        tmp_path, "import os, pathlib\npathlib.Path('path.txt').write_text(os.environ['PATH'])\n"
-    )
-    SubprocessPandoc(binary).run([], cwd=tmp_path)
-    first = (tmp_path / "path.txt").read_text(encoding="utf-8").split(":")[0]
-    assert first == str(Path(sys.executable).parent)
-
-
 def test_a_binary_that_does_not_exist_is_exit_code_127(tmp_path: Path) -> None:
     assert SubprocessPandoc(str(tmp_path / "nope")).run([], cwd=tmp_path).code == 127
 
@@ -180,12 +202,3 @@ def test_a_binary_that_hangs_is_stopped(tmp_path: Path) -> None:
     result = SubprocessPandoc(binary, timeout_s=0.3).run([], cwd=tmp_path)
     assert result.code == 124
     assert "timed out" in result.stderr
-
-
-def test_the_default_stylesheet_parses_without_errors() -> None:
-    import tinycss2
-
-    css = (Path(__file__).parents[1] / "templates" / "report.css").read_text(encoding="utf-8")
-    rules = tinycss2.parse_stylesheet(css, skip_comments=True, skip_whitespace=True)
-    assert rules
-    assert not [r for r in rules if r.type == "error"]

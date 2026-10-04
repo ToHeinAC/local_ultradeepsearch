@@ -49,9 +49,12 @@ interrupt, because LangGraph runs an interrupted node again from its start ([bri
   up to `fix_rounds` rounds; one-time fixes are remembered in `temp/gate-state.json`. A check that
   stays failing leaves the run `blocked`; `report.md` and the exports stay downloadable and
   `gate.json` lists every round.
-- **X, export** (`export.py`, `adapters/pandoc.py`). `report.docx` and `report.pdf` through the
-  pandoc binary, checked after the fact (every H2 in the DOCX, `%PDF` in the PDF). A missing or
-  failing pandoc fails the exports and nothing else.
+- **X, export** (`export.py`, `pdf.py`, `adapters/pandoc.py`). `report.docx` through the pandoc
+  binary; `report.pdf` in-process: markdown-it-py parses `report.md`, ReportLab lays it out
+  (headings, paragraphs, lists, tables, code fences, page numbers; Bitstream Vera for text,
+  Courier for code, `?` for a character a font lacks). Both are checked after the fact (every H2
+  in the DOCX, `%PDF` in the PDF); a missing or failing pandoc fails the DOCX only, a failed
+  layout the PDF only, each with an event, and the Markdown stays.
 
 Citations are owned by code ([PRD.md](../PRD.md) §3.9): sections hold keys like `[S3]`;
 `report.py` and `sections.py` render `report.md` from the section files with numbers by first

@@ -46,7 +46,6 @@ RAW_BRIEF = (
     "2. Welche Genehmigungen sind nötig?\n"
 )
 TEMPLATE = "technische-stellungnahme"
-CSS = Path(__file__).parents[1] / "templates" / "report.css"
 
 
 def hit(i: int) -> SearchHit:
@@ -198,7 +197,6 @@ def _step_deps(
         formats=FORMATS,
         events=events,
         pandoc=pandoc,
-        css=CSS,
         prompt_chars=(spec.num_ctx - spec.num_predict) * CHARS_PER_TOKEN,
         condense_chars=int((summ.num_ctx - summ.num_predict) * CHARS_PER_TOKEN * 0.6),
         now=lambda: NOW,

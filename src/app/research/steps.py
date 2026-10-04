@@ -83,7 +83,6 @@ class StepDeps:
     formats: ResponseFormats
     events: EventSink
     pandoc: PandocRunner
-    css: Path
     prompt_chars: int  # what reason's prompt may hold, in characters
     condense_chars: int  # what one summarize call may hold, in characters
     now: Callable[[], datetime]
@@ -313,7 +312,6 @@ class ResearchSteps:
             result = export_report(
                 ctx.run_dir,
                 self._d.pandoc,
-                css=self._d.css,
                 reference_docx=ctx.reference_docx,
                 events=self._d.events,
             )

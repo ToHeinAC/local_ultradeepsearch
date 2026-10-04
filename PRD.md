@@ -179,7 +179,7 @@ search queries.
 - **Licences** must be compatible with Apache-2.0.
   - Planned: langgraph, langgraph-checkpoint-sqlite, ollama, tavily-python, ddgs, httpx,
     trafilatura, pypdfium2, python-docx, datasketch, fastapi, uvicorn, sse-starlette, mcp,
-    streamlit, pydantic-settings, langdetect, weasyprint, psutil.
+    streamlit, pydantic-settings, langdetect, reportlab, markdown-it-py, psutil.
   - pymupdf (AGPL) and hypothesis (MPL) are **not** allowed.
   - pandoc (GPL) is used only as an external binary.
 - **Prior art** (the owner's projects; copying is fine):
@@ -537,7 +537,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
     order.
   - **Gate:** G1–G12 with fix rounds.
   - **Export:** `report.docx` via pandoc (optional template `reference_docx`); `report.pdf` via
-    pandoc `--pdf-engine=weasyprint` with a default CSS.
+    ReportLab and markdown-it-py in-process, no external binary.
   - **CLI:** `udr run <run_id>` and `udr run --brief <file> --tier light --template <id>`; resumable.
   - **Templates** live in `templates/` (built-in) and `data/templates/` (uploads).
     - Front matter: `id`, `name`, `description`, `language`, `default_response_format`, optional
@@ -566,7 +566,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
   6. Code rejects polish hunks with a net positive char delta. Readability recommendations outside
      the allowed categories, or touching an H2, are skipped and logged.
   7. Exports: the DOCX opens with python-docx and has every H2; the PDF starts with `%PDF`.
-     Without pandoc, export fails visibly and MD stays available.
+     If a renderer fails, that export fails visibly and MD stays available.
   8. **Live:** a German Lite reference run passes the gate, with a target of ≤ 60 min. Wall time,
      credits, sources and drop rate are recorded in IMPLEMENTATION.md.
 - **Edge cases:**
@@ -735,7 +735,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 - **Deliverable:**
   - systemd **user** units `udr-ollama`, `udr-api` and `udr-gui`: loopback only,
     `Restart=on-failure`, `EnvironmentFile=.env`, `loginctl enable-linger`.
-  - System packages `pandoc` and WeasyPrint's pango, installed with the owner's OK.
+  - System package `pandoc` (for the DOCX export only), installed with the owner's OK.
   - `udr backup`: SQLite online backup of both DBs, plus an archive of
     `data/{runs,briefs,templates,denylist.txt}` into `data/backups/<ts>/`. Keeps the last 7; the
     restore procedure is documented.

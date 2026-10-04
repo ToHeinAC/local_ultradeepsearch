@@ -137,7 +137,9 @@ def test_without_a_pandoc_binary_the_run_still_ends_and_says_why(
     ).run_id
     done = service.approve_plan(run_id, str(service.run(run_id).plan_sha256))
     assert done.status == "done"
-    assert done.exports == {"docx": "pandoc_missing", "pdf": "pandoc_missing"}
+    assert done.exports == {"docx": "pandoc_missing", "pdf": "ok"}
+    pdf = rt.settings.data_dir / "runs" / run_id / "report.pdf"
+    assert pdf.read_bytes().startswith(b"%PDF")  # made in-process, no binary involved
     saved = json.loads((rt.settings.data_dir / "runs" / run_id / "run.json").read_text("utf-8"))
     assert saved["exports"] == done.exports
 

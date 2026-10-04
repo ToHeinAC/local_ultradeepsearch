@@ -346,9 +346,10 @@ def test_a_missing_pandoc_does_not_change_the_gate_outcome(tmp_path: Path) -> No
     run_id = at_plan_gate(r)
     view = r.service.approve_plan(run_id, str(r.service.view(run_id).plan_sha256))
     assert view.status == "done"
-    assert view.exports == {"docx": "pandoc_missing", "pdf": "pandoc_missing"}
+    assert view.exports == {"docx": "pandoc_missing", "pdf": "ok"}
     assert (r.run_dir(run_id) / "report.md").exists()
     assert not (r.run_dir(run_id) / "report.docx").exists()
+    assert (r.run_dir(run_id) / "report.pdf").read_bytes().startswith(b"%PDF")  # no pandoc needed
     assert any(e.data["reason"] == "pandoc_missing" for e in r.events.of_type("export_failed"))
 
 

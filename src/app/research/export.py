@@ -1,8 +1,8 @@
-"""Step X (PRD M5): `report.docx` and `report.pdf` from `report.md` through pandoc.
+"""Step X (PRD M5): `report.docx` through pandoc and `report.pdf` in-process (`pdf.py`).
 
 The Markdown stays the report; the exports are conveniences and are checked after the fact: a
 DOCX must hold every H2 of the report, a PDF must be a PDF. Anything else is refused and removed,
-and the failure is an event, never silent. A missing pandoc fails both formats and nothing else.
+and the failure is an event, never silent. A missing pandoc fails the DOCX and nothing else.
 """
 
 from collections.abc import Sequence
@@ -14,6 +14,7 @@ from docx import Document
 
 from app.events import EventSink
 from app.research.markdown import h2_list
+from app.research.pdf import render_pdf
 
 NOT_FOUND = 127
 FIRST_LINE = 200
@@ -42,17 +43,6 @@ class ExportResult:
 def docx_args(report: Path, out: Path, reference_docx: Path | None) -> list[str]:
     args = [str(report), "--from=markdown", "-o", str(out)]
     return [*args, f"--reference-doc={reference_docx}"] if reference_docx else args
-
-
-def pdf_args(report: Path, out: Path, css: Path) -> list[str]:
-    return [
-        str(report),
-        "--from=markdown",
-        "-o",
-        str(out),
-        "--pdf-engine=weasyprint",
-        f"--css={css}",
-    ]
 
 
 def docx_headings(path: Path) -> list[str]:
@@ -94,11 +84,25 @@ def _make(
     return "ok"
 
 
+def _make_pdf(run_dir: Path, report: str, headings: Sequence[str]) -> str:
+    out = run_dir / "report.pdf"
+    out.unlink(missing_ok=True)  # an export of an earlier attempt must never pass for this one
+    try:
+        render_pdf(report, out)
+    except Exception as exc:  # a layout failure of any kind; a crash signal still propagates
+        first = (str(exc).splitlines() or [""])[0][:FIRST_LINE]
+        return f"render_failed: {type(exc).__name__}: {first}"
+    problem = _verify(out, "pdf", headings)
+    if problem is not None:
+        out.unlink(missing_ok=True)
+        return f"invalid_output: {problem}"
+    return "ok"
+
+
 def export_report(
     run_dir: Path,
     runner: PandocRunner,
     *,
-    css: Path,
     reference_docx: Path | None,
     events: EventSink,
 ) -> ExportResult:
@@ -106,11 +110,12 @@ def export_report(
     report = run_dir / "report.md"
     if not report.exists():
         return ExportResult("no_report", "no_report")
-    headings = h2_list(report.read_text(encoding="utf-8"))
-    md, docx, pdf = Path("report.md"), Path("report.docx"), Path("report.pdf")
+    text = report.read_text(encoding="utf-8")
+    headings = h2_list(text)
+    md, docx = Path("report.md"), Path("report.docx")
     outcomes = {
         "docx": _make(runner, run_dir, "docx", docx_args(md, docx, reference_docx), headings),
-        "pdf": _make(runner, run_dir, "pdf", pdf_args(md, pdf, css), headings),
+        "pdf": _make_pdf(run_dir, text, headings),
     }
     for fmt, outcome in outcomes.items():
         if outcome == "ok":
