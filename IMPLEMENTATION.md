@@ -80,9 +80,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 ## 4. Open issues
 
 - M5 (in progress): the PDF is made in-process with `reportlab` (BSD) and `markdown-it-py` (MIT),
-  so no GPL, LGPL or MPL package is involved any more. `reportlab` brings `pillow` (MIT-CMU, the
-  permissive HPND-style licence), which is not on the example list in [AGENTS.md](AGENTS.md) §5.5;
-  the owner decides whether it needs a recorded exception. The PDF text uses the Bitstream Vera
+  so no GPL, LGPL or MPL package is involved any more. `reportlab` brings `pillow` (MIT-CMU), an
+  exception the owner accepted on 2026-10-04 ([AGENTS.md](AGENTS.md) §5.5). The PDF text uses the Bitstream Vera
   fonts that ship with ReportLab: Latin text is fine, a character outside Vera is shown as `?`.
   `uv add` also rewrote `uv.lock` in lock revision 2 (a newer uv), which is why that diff is large.
   `include_domains` hints of the domain strategies are not passed to Tavily yet: they would
