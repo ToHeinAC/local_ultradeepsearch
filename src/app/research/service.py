@@ -42,6 +42,15 @@ STARTABLE = ("queued", "failed")
 
 
 @dataclass(frozen=True)
+class PreparedBrief:
+    text: str
+    sha256: str
+    template_id: str
+    response_format: str
+    report_language: str
+
+
+@dataclass(frozen=True)
 class ResearchDeps:
     runs: RunStore
     store: ResearchStore
@@ -206,38 +215,54 @@ class ResearchService:
 
     # ---- external briefs ------------------------------------------------------------------
 
+    def prepare_external(
+        self,
+        text: str,
+        *,
+        template_id: str,
+        response_format: str | None = None,
+        report_language: str | None = None,
+    ) -> PreparedBrief:
+        """The brief as it will be archived (Method line, Output section), with its hash and the
+        settings it carries. The format and language default to the template's. Writes nothing."""
+        try:
+            template = get_template(self._d.templates, template_id)
+            name = response_format or template.default_response_format
+            fmt = self._d.formats.named(name)
+        except (TemplateError, ValueError) as exc:
+            raise InvalidInput(str(exc)) from exc
+        language = report_language or template.language
+        final = prepare_external_brief(
+            text, template=template, fmt_name=name, fmt=fmt, language=language
+        )
+        return PreparedBrief(final, brief_sha256(final), template_id, name, language)
+
     def create_external_run(
         self,
         text: str,
         *,
         tier: str,
         template_id: str,
-        response_format: str,
-        report_language: str,
+        response_format: str | None = None,
+        report_language: str | None = None,
     ) -> RunRow:
         """A queued run from a brief written outside Phase 1 (`udr run --brief`)."""
         if tier not in ("light", "full"):
             raise InvalidInput(f"tier must be light or full, got {tier!r}")
-        try:
-            template = get_template(self._d.templates, template_id)
-            fmt = self._d.formats.named(response_format)
-        except (TemplateError, ValueError) as exc:
-            raise InvalidInput(str(exc)) from exc
-        final = prepare_external_brief(
+        prepared = self.prepare_external(
             text,
-            template=template,
-            fmt_name=response_format,
-            fmt=fmt,
-            language=report_language,
-        )
-        approved = self._d.now()
-        path = archive_brief(self._d.briefs_dir, final, approved)
-        return self._d.runs.create_external_run(
-            sha256=brief_sha256(final),
-            brief_path=str(path),
-            tier=tier,
             template_id=template_id,
             response_format=response_format,
             report_language=report_language,
+        )
+        approved = self._d.now()
+        path = archive_brief(self._d.briefs_dir, prepared.text, approved)
+        return self._d.runs.create_external_run(
+            sha256=prepared.sha256,
+            brief_path=str(path),
+            tier=tier,
+            template_id=prepared.template_id,
+            response_format=prepared.response_format,
+            report_language=prepared.report_language,
             approved_at=approved,
         )
