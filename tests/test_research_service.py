@@ -11,6 +11,7 @@ from research_rig import (
     FakePreparer,
     ModelCrash,
     ResearchModels,
+    german_text,
 )
 from research_run_rig import RAW_BRIEF, TEMPLATE, RunRig, make_rig
 
@@ -356,3 +357,56 @@ def test_the_events_tell_the_story_of_the_run(rig: RunRig) -> None:
     rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
     assert [e.data["status"] for e in rig.events.of_type("run_finished")] == ["done"]
     assert [e.data["run_id"] for e in rig.events.of_type("plan_approved")] == [run_id]
+
+
+# ---- mutants of the steps and the service ---------------------------------------------------
+
+
+def test_a_run_whose_graph_waits_for_the_plan_is_not_left_running(rig: RunRig) -> None:
+    """A row left `running` behind a graph that already waits (a crash between the two) must not
+    be stuck: the status follows the graph, so the plan can be approved."""
+    run_id = at_plan_gate(rig)
+    rig.runs.set_status(run_id, "running")
+    calls = dict(rig.models.calls)
+    view = rig.service.run(run_id)
+    assert (view.status, view.waiting_for) == ("awaiting_plan_approval", "plan")
+    assert rig.models.calls == calls  # nothing was planned again
+    assert rig.service.approve_plan(run_id, str(view.plan_sha256)).status == "done"
+
+
+def test_the_approval_step_checks_the_plan_hash_itself(rig: RunRig) -> None:
+    """Defence in depth: a resume that bypassed the service still cannot approve another plan."""
+    run_id = at_plan_gate(rig)
+    sha = str(rig.service.view(run_id).plan_sha256)
+    with pytest.raises(StalePlan):
+        rig.steps.confirm_plan(run_id, "0" * 64)
+    rig.steps.confirm_plan(run_id, sha)
+
+
+def test_the_must_read_set_is_chosen_once_and_then_read_from_its_file(rig: RunRig) -> None:
+    run_id = at_plan_gate(rig)
+    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    path = rig.run_dir(run_id) / "temp" / "must-read.json"
+    path.write_text(json.dumps({"note_ids": ["n0001"]}), encoding="utf-8")
+    ctx = rig.steps._contexts(run_id)  # pyright: ignore[reportPrivateUsage]
+    assert rig.steps._must_read(ctx) == ["n0001"]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_polish_cuts_reach_the_report_file_before_the_next_step_runs(tmp_path: Path) -> None:
+    filler = "Es ist wichtig anzumerken, dass der"
+    heading = TEMPLATES[TEMPLATE].headings[0]
+    text = f"{german_text(60)} {filler} Rückbau zehn Jahre dauert [S1]."
+    hunk = {"old": filler, "new": "Der", "reason": "Füllwort"}
+    models = ResearchModels(
+        texts={heading: text},
+        polishes=[{"hunks": [hunk], "escalations": []}],
+        crash_on={"ReadabilityProposal": 1},  # stop right after step 15
+    )
+    r = make_rig(tmp_path, models=models)
+    run_id = r.create().run_id
+    r.service.run(run_id)
+    with pytest.raises(ModelCrash):
+        r.service.approve_plan(run_id, str(r.service.view(run_id).plan_sha256))
+    report = (r.run_dir(run_id) / "report.md").read_text(encoding="utf-8")
+    assert filler not in report
+    assert "Der Rückbau zehn Jahre dauert" in report

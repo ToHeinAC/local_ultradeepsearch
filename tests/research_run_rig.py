@@ -92,6 +92,7 @@ class RunRig:
     pandoc: FakePandoc
     events: MemoryEventSink
     built: dict[str, Built]
+    steps: ResearchSteps
 
     def create(self, **kwargs: str) -> RunView:
         """An external run of the rig's brief, queued."""
@@ -122,7 +123,8 @@ def make_rig(
     context = _contexts(base, runs, events, built, searcher, preparer)
     deps = _step_deps(models, events, runs, searches, pandoc)
     saver = SqliteSaver(sqlite3.connect(base / "checkpoints.sqlite", check_same_thread=False))
-    runner = ResearchRunner(build_research_graph(ResearchSteps(deps, context), saver))
+    steps = ResearchSteps(deps, context)
+    runner = ResearchRunner(build_research_graph(steps, saver))
     service = ResearchService(
         ServiceDeps(
             runs=runs,
@@ -136,7 +138,9 @@ def make_rig(
             now=lambda: NOW,
         )
     )
-    return RunRig(base, service, runs, searches, models, searcher, preparer, pandoc, events, built)
+    return RunRig(
+        base, service, runs, searches, models, searcher, preparer, pandoc, events, built, steps
+    )
 
 
 def _contexts(

@@ -156,7 +156,8 @@ class ResearchService:
 
     def _start_or_continue(self, run_id: str) -> None:
         snapshot = self._d.runner.snapshot(run_id)
-        if snapshot.interrupt is not None:
+        if snapshot.interrupt is not None:  # the graph already waits: the status follows it
+            self._d.runs.set_status(run_id, "awaiting_plan_approval")
             return
         if snapshot.values:
             self._d.runner.proceed(run_id)
