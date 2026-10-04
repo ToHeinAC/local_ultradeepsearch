@@ -320,8 +320,8 @@ def queries_for(item: str, queries: list[dict[str, str]]) -> list[str]:
 
 
 def test_wave_two_is_not_redrafted_on_resume(tmp_path: Path) -> None:
-    r = wave2_rig(tmp_path, [{"item_id": "i02", "query": "Obrigheim Rückbau"}])
-    run_sweep(r.scope)
+    r = wave2_rig(tmp_path, [{"item_id": "i02", "query": "Obrigheim ohne Treffer"}])
+    run_sweep(r.scope)  # the item stays uncovered, so only the stored rows prevent a redraft
     run_sweep(r.scope)
     assert len(r.wave2.calls) == 1
     assert len(r.store.rows(r.run_id, wave=2)) == 1
