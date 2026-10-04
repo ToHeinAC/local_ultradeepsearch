@@ -50,6 +50,8 @@ class FakeGateway:
     secret: tuple[str, ...] = ("Firma X",)
     web_hits: dict[str, list[SearchHit]] = field(default_factory=lambda: {})
     scholarly_hits: dict[str, list[ScholarlyRecord]] = field(default_factory=lambda: {})
+    crash_prepare_on: int | None = None  # the n-th `prepare_query` call raises `SimulatedCrash`
+    crash_search_on: int | None = None  # the n-th `search_web` call raises, before it is charged
     prepared: list[str] = field(default_factory=lambda: [])
     web_calls: list[tuple[str, tuple[str, ...], int]] = field(default_factory=lambda: [])
     scholarly_calls: list[tuple[str, str]] = field(default_factory=lambda: [])
@@ -61,6 +63,8 @@ class FakeGateway:
 
     def prepare_query(self, query: str, *, step: str) -> PreparedQuery:
         self.prepared.append(query)
+        if self.crash_prepare_on == len(self.prepared):
+            raise SimulatedCrash("crash while sanitizing")
         self._check(query)
         if SANITIZER_FAILS in query:
             raise OutboundBlocked("sanitizer_failed")
@@ -83,6 +87,8 @@ class FakeGateway:
     ) -> list[SearchHit]:
         self._check(prepared.sent)
         self.web_calls.append((prepared.sent, tuple(include_domains), max_results))
+        if self.crash_search_on == len(self.web_calls):
+            raise SimulatedCrash("crash while searching")
         if UNAVAILABLE in prepared.sent:
             raise SearchUnavailable("both providers failed")
         self.credits += 1
