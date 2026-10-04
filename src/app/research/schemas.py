@@ -73,3 +73,13 @@ class CoverageMatrix(BaseModel):
 
 class Headings(BaseModel):
     headings: list[Text]
+
+
+class PlannedQuery(BaseModel):
+    item_id: Line
+    lens: Literal["breadth", "depth", "adversarial", "period"]
+    query: Text
+
+
+class SearchPlanDraft(BaseModel):
+    queries: list[PlannedQuery]

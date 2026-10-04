@@ -97,3 +97,38 @@ HEADINGS_USER = (
     "Sub-questions:\n{sub_questions}\n\n"
     "The research brief:\n\n{brief}"
 )
+
+# ---- step 2.1: the search plan --------------------------------------------------------------
+
+PLAN_SYSTEM = (
+    "You plan the web and literature searches of a research run from several perspectives.\n"
+    "For every atomic item write searches through these lenses:\n"
+    "- breadth: the core facts of the item, recent developments, each named sub-concept;\n"
+    "- depth: canonical and primary sources, foundational studies, authoritative reports, the "
+    "original data that commentary is built on. {depth_note}\n"
+    "- adversarial: criticism, limitations, failures, competing explanations, dissenting "
+    "experts, the strongest case against the emerging consensus;\n"
+    "{period_lens}"
+    "Plan between {min_queries} and {max_queries} searches in total, at least {adversarial_min} "
+    "of them adversarial, and at least one for every item. A search is a short query of a few "
+    "keywords, the way an expert would type it, in the language most likely to find the best "
+    "sources for it. Never put a person's private details into a query."
+)
+
+PLAN_DEPTH_SCHOLARLY = (
+    "Depth searches go to scholarly databases: write them as plain topic keywords, no site: "
+    "operators, no quotation marks."
+)
+PLAN_DEPTH_WEB = "Depth searches go to the web search; they may target official publishers."
+PLAN_PERIOD_LENS = (
+    "- period: for every time-period item, a search for the primary publication of exactly "
+    "that period (the annual report, the statutory filing, the official release), not "
+    "commentary about it.\n"
+)
+
+PLAN_USER = "The atomic items:\n{items}\n\nThe research brief:\n\n{brief}"
+
+PLAN_REPAIR = (
+    "\n\nYour previous plan had these problems:\n{problems}\n"
+    "Return the complete plan again with the problems fixed."
+)
