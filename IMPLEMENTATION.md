@@ -14,6 +14,7 @@ Rules: [AGENTS.md](AGENTS.md). Design: [docs/architecture.md](docs/architecture.
 | Machine check | `uv run udr doctor` (`--json`; `--calibrate` measures the reason context) |
 | Denylist | `uv run udr denylist add <term>...`, `remove <term>...`, `list` |
 | Phase 1: clarify and approve a brief | `uv run udr brief "<question>" [--file F]...`, `--list`, `--session <id>` (see [docs/brief.md](docs/brief.md)) |
+| Phase 2: start or continue a run, review its plan | `uv run udr run <run_id> [--approve-plan <sha> \| --no-input]`, `uv run udr run --brief F --tier light --template ID` (see [docs/research.md](docs/research.md)) |
 | Ingest sources of a run (library call; the CLI and graphs arrive later) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
 
 ## 2. Phase status
@@ -27,7 +28,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
-| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline so far: every step, the gate G1–G12 with fixtures, fix rounds, export and a whole Lite run on fakes (`test_research_*.py`); CLI, wiring, SIGKILL tests, docs and the live run remain, see the plan |
+| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); the live Lite run (AC8) remains, see §4 |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
@@ -47,8 +48,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/text.py` | `normalize_for_match` and the verbatim-quote check `contains_quote` (also used by the ship gate later). |
 | `src/app/calibration.py` | Measures the largest `reason` context that fits VRAM; `calibration.json` I/O. |
 | `src/app/doctor.py` | Pure checks over a `DoctorSnapshot`; exit code and rendering. |
-| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`. |
-| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`). Entry point `udr = app.cli:main`. |
+| `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`; `build_brief_service` and `build_research_service` (the per-run context, the step dependencies from the model registry, the worker lock). |
+| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`). Entry point `udr = app.cli:main`. |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
 | `src/app/adapters/system_probe.py` | `nvidia-smi`, free disk, binary lookup, model-store discovery. |
@@ -56,12 +57,13 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/templates.py`, `templates/` | Report templates (front matter plus one H2 per section), validation, the five built-ins. |
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
-| `src/app/research/` | Phase 2 (M5, in progress): manifest and settings, report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [plans/m5-lite.md](docs/plans/m5-lite.md). |
-| `src/app/graphs/research.py`, `src/app/adapters/pandoc.py` | The `research` graph and its runner; the only code that starts pandoc. |
+| `src/app/research/` | Phase 2 (M5, in progress): manifest and settings, `console.py` (the plan review of `udr run`), report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [docs/research.md](docs/research.md). |
+| `src/app/graphs/research.py`, `src/app/adapters/pandoc.py` | The `research` graph and its runner; the only code that starts pandoc. See [docs/research.md](docs/research.md). |
 | `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
 | `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
 | `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
 | `config/` | `profiles.toml` (per-tier budgets) and `source_strategies.toml` (tier weights, host rules, domain sections). |
+| `tests/research_rig.py`, `tests/research_run_rig.py`, `tests/research_crash_child.py` | The Phase-2 fakes (gateway pieces, scripted models, pandoc), a whole Lite run on them, and the child process the Phase-2 SIGKILL tests kill. |
 | `tests/brief_rig.py`, `tests/brief_crash_child.py` | The scripted model and the wired Phase-1 session; the child process the Phase-1 SIGKILL test kills. |
 | `tests/test_layer_rules.py` | Enforces that LangGraph is imported only in `src/app/graphs/`. |
 | `tests/support.py` | `make_settings()` (`Settings` that ignore any developer `.env`), `make_pdf()` (synthetic PDFs) and `make_note()`. |
@@ -84,6 +86,12 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   are not passed to Tavily yet: they would restrict results, so M5 only ranks authoritative hosts
   first.
 
+- M5 has run only against fakes. The real models and the real gateway have not run the Lite
+  pipeline, so the prompts of steps 1 to 16 are unproven on real output; the German reference run
+  (AC8) waits for the owner's go-ahead and for the M2/M3/M4 live checks first (plan D12).
+- `udr run` does not apply a run's `summarize_model` choice; the `summarize` role uses the registry's
+  model for every run.
+- Run events go to `data/events.jsonl` with the model telemetry, not to a file per run.
 - PRD wording differs from the code in these places and needs the owner's approval to change:
   1. §3.1 and R6 say `UDR_OLLAMA_GPU`; the variable is `UDR_OWN_OLLAMA_GPU`.
   2. R6 says the doctor "warns about foreign processes"; it compares used VRAM with what our own

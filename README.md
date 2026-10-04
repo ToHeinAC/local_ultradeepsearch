@@ -9,7 +9,7 @@ depth, using only local Ollama models plus web search. It is a local port of
 
 ## Status
 
-Milestones M1 to M4 are done:
+Milestones M1 to M4 are done, and M5 is in progress:
 - **M1:** configuration, the model-role registry, the LLM service, our own pinned Ollama instance,
   context calibration and `udr doctor`.
 - **M2:** the outbound gateway. Denylist, private-URL guard, query sanitizer, outbound log, Tavily
@@ -21,7 +21,11 @@ Milestones M1 to M4 are done:
   MD or TXT context, OCR for scans) and ends with a brief you approve by its hash. No Internet is
   used, and a stopped session continues where it stopped ([docs/brief.md](docs/brief.md)).
 
-The research run itself (Phase 2), the GUI and the service API are not built yet. Phase status:
+- **M5 (in progress):** `udr run` plans the searches of a run, lets you approve exactly the queries
+  that will be sent, then searches, writes, checks and exports the report
+  ([docs/research.md](docs/research.md)). It has only run on fakes so far.
+
+The GUI and the service API are not built yet. Phase status:
 [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Quickstart
@@ -36,6 +40,7 @@ cp .env.example .env                   # optional; every setting has a default
 uv run udr doctor --calibrate          # checks the machine, measures the reason context
 uv run udr denylist add "Client GmbH"  # terms that must never leave this machine
 uv run udr brief "Meine Frage" -f a.pdf # Phase 1: clarify the question, approve the brief
+uv run udr run <run_id>                # Phase 2: plan, approve the queries, report
 uv run pytest                          # offline tests
 uv run pytest -m live                  # tests against the real models
 ```
