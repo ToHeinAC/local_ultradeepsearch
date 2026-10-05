@@ -27,7 +27,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | done | 209 offline tests, 99 % branch coverage; live: `udr doctor --calibrate` and `pytest -m live` (6 passed), see [docs/ollama-runtime.md](docs/ollama-runtime.md) |
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage; live: `tests/live/test_live_outbound.py` (9 passed), see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live: `test_live_vault.py` ran, drop rate 0.75 (above R2), see §4 |
-| 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
+| 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. live: `tests/live/test_live_brief.py` ran, see §4 |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); the live Lite run (AC8) remains, see §4 |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
@@ -125,10 +125,19 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 - M4 differs from its plan in three places: the session row also holds the current brief text and
   hash, so an approval is checked in the database; events go to `data/events.jsonl`, not to a file
   per session; and the model errors of a call are returned in the view instead of raised.
-- The Phase-1 pieces have not run against the real models. The check needs our Ollama (`reason`,
-  `summarize`, `ocr`) and a PDF with a scanned page; it waits for the owner's go-ahead. The first
-  real session decides whether the `assess` prompt asks few enough questions and whether the
-  `deepseek-ocr` prompt (`Free OCR.`) is the right one.
+- M4 live check (`tests/live/test_live_brief.py`, 2026-10-05, real `reason`, `summarize` and `ocr`;
+  a question plus a PDF with one text and one scanned page; 15 min): the session reached the
+  decision. Findings:
+  1. `deepseek-ocr` with `Free OCR.` reads the page but adds markup tokens and one invented line
+     ("Mit freundlichen Grüßen"). The markup made `summarize` ignore the page; `clean_ocr` now strips
+     it and the page-2 fact is kept in 3 of 3 runs. The invented line remains. `Extract all text
+     from this image.` hallucinated a whole letter in one run, so the prompt stays `Free OCR.`.
+  2. The `assess` prompt asks too much: 5, 1, 3, 2 and 1 questions in five rounds (the maximum),
+     the checklist flips between rounds (`output` clear, then missing) and `scope` came up four
+     times. Not changed; it needs a prompt decision.
+  3. The drafted proposals held factual slips (spent fuel called "abgereichert", Asse named as a
+     destination for it). The test accepted every proposal, so it shows model quality, not a defect
+     of the code.
 - `udr brief` adds files only at the start; `BriefService.add_files` also works while questions are
   open, for the GUI and the API.
 - `orjson` (MPL-2.0 part), a hard dependency of LangGraph, was accepted as a transitive exception
