@@ -132,9 +132,14 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
      ("Mit freundlichen Grüßen"). The markup made `summarize` ignore the page; `clean_ocr` now strips
      it and the page-2 fact is kept in 3 of 3 runs. The invented line remains. `Extract all text
      from this image.` hallucinated a whole letter in one run, so the prompt stays `Free OCR.`.
-  2. The `assess` prompt asks too much: 5, 1, 3, 2 and 1 questions in five rounds (the maximum),
-     the checklist flips between rounds (`output` clear, then missing) and `scope` came up four
-     times. Not changed; it needs a prompt decision.
+  2. The `assess` prompt asked too much: 5, 1, 3, 2 and 1 questions in five rounds (the maximum), the
+     checklist flipped between rounds and `scope` came up four times. Now the prompt forbids
+     questions about output and depth, about clear or answered items and compound questions, and
+     code keeps only questions about `missing` items never asked about before. Measured over 3
+     cases × 3 runs (`assess` alone, every candidate accepted): questions 10.6 → 6.2 (prompt) → 5.8
+     (`missing` only) → 4.0 (never twice); rounds with questions 4.4 → 4.0 → 3.4 → 2.0; `output`
+     questions 22 → 0. A vague answer is no longer followed up: the item stays `missing`, so the
+     brief lists it as not clarified.
   3. The drafted proposals held factual slips (spent fuel called "abgereichert", Asse named as a
      destination for it). The test accepted every proposal, so it shows model quality, not a defect
      of the code.

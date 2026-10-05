@@ -18,6 +18,7 @@ from brief_rig import (
     a_pdf,
     answers,
     build_parts,
+    checklist,
     q,
 )
 from langgraph.types import Command
@@ -189,7 +190,7 @@ def test_the_draft_sees_the_checklist_with_the_answered_items_clear(tmp_path: Pa
     h.resume(answers("accept", "unknown", genug=True))
     prompt = h.models.prompts_seen["draft"][0]
     assert "audience: clear" in prompt  # answered
-    assert "scope: assumed" in prompt  # "don't know" clears nothing
+    assert "scope: missing" in prompt  # "don't know" clears nothing
     assert "goal: missing" in prompt  # never asked about
 
 
@@ -222,9 +223,25 @@ def test_genug_after_round_one_lists_every_missing_item(tmp_path: Path) -> None:
     assumptions = text.split("## Annahmen")[1].split("\n## ")[0]
     assert "- Nicht geklärt: Ziel" in assumptions
     assert "- Nicht geklärt: Zielgruppe" in assumptions
-    assert "Nicht geklärt: Umfang" not in assumptions  # only assumed, not missing
+    assert "- Nicht geklärt: Umfang" in assumptions  # "don't know" clears nothing
     assert "Wer liest den Bericht?" in text  # the unknown answers became research questions
     assert "Was nicht?" in text
+
+
+def test_an_assumed_item_is_not_asked_and_not_listed_as_not_clarified(tmp_path: Path) -> None:
+    round_one = {
+        **ROUND_ONE,
+        "checklist": checklist(audience="missing", scope="assumed", goal="missing"),
+        "questions": [q("scope", "Was nicht?"), q("audience", "Wer liest den Bericht?")],
+    }
+    h = harness(tmp_path, Models(assessments=[round_one]))
+    h.start()
+    payload = h.pending()
+    assert payload is not None
+    assert [x["item"] for x in payload["questions"]] == ["audience"]  # the assumed one is dropped
+    h.resume(answers("unknown", genug=True))
+    assumptions = brief_of(h).split("## Annahmen")[1].split("\n## ")[0]
+    assert "Nicht geklärt: Umfang" not in assumptions
 
 
 def test_answered_items_are_not_listed_as_missing(tmp_path: Path) -> None:
@@ -237,11 +254,12 @@ def test_answered_items_are_not_listed_as_missing(tmp_path: Path) -> None:
 
 def test_the_round_limit_ends_the_interview(tmp_path: Path) -> None:
     limits = LIMITS.model_copy(update={"max_rounds": 2})
-    h = harness(tmp_path, Models(assessments=[ROUND_ONE]), limits=limits)  # always asks
+    round_two = {**ROUND_ONE, "questions": [q("goal", "Wofür?")]}  # still asks, about a new item
+    h = harness(tmp_path, Models(assessments=[ROUND_ONE, round_two]), limits=limits)
     h.start()
     h.resume(answers("accept", "accept"))
     assert (h.pending() or {})["round"] == 2
-    h.resume(answers("accept", "accept"))
+    h.resume(answers("accept"))
     assert (h.pending() or {})["type"] == "decision"
     assert h.models.count("assess") == 2  # no third assessment
     assert h.values()["round"] == 2

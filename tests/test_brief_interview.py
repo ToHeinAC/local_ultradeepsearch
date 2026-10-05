@@ -133,6 +133,23 @@ def test_the_prompt_carries_the_interview_language(code: str, name: str) -> None
     assert "interview language" in r.last().messages[0]["content"].lower()
 
 
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Never ask about output or depth",  # the owner sets both at approval, with defaults
+        "Ask only about content items that are missing",
+        "an empty question list is the right answer",
+        "A clear item stays clear",
+        "never ask about it again",  # a topic answered or answered with "does not know"
+        "one topic per question",
+        "no names, figures or facts from your own knowledge",  # candidates were invented before
+    ],
+)
+def test_the_prompt_states_the_rules_that_keep_the_interview_short(rule: str) -> None:
+    """The first live session asked 12 questions in 5 rounds and drafted invented candidates."""
+    assert rule in prompts.ASSESS_SYSTEM
+
+
 def test_an_unknown_language_code_is_named_by_its_code() -> None:
     r = rig({"Assessment": ASSESSMENT})
     ask(r, language="sw")
@@ -235,16 +252,23 @@ def test_a_clear_depth_stays_clear() -> None:
     assert checklist_of(result)["depth"] == "clear"
 
 
-def test_questions_about_clear_items_are_dropped() -> None:
+def test_only_questions_about_missing_items_are_kept() -> None:
+    """A clear item needs no question; an assumed one has a default the brief lists."""
     raw = assessment(
         {"audience": "clear", "scope": "missing", "goal": "assumed"},
         [question("audience", "A?"), question("scope", "B?"), question("goal", "C?")],
     )
     result = normalize_assessment(raw, LIMITS, round_no=1)
-    assert [q.question for q in result.questions] == ["B?", "C?"]
+    assert [q.question for q in result.questions] == ["B?"]
+    assert checklist_of(result)["goal"] == "assumed"
 
 
-def test_missing_items_are_asked_before_assumed_ones_then_in_checklist_order() -> None:
+def test_an_assessment_with_nothing_missing_asks_nothing() -> None:
+    raw = assessment({"goal": "assumed", "scope": "assumed"}, [question("goal", "g?")])
+    assert normalize_assessment(raw, LIMITS, round_no=2).questions == []
+
+
+def test_missing_items_are_asked_in_checklist_order() -> None:
     raw = assessment(
         {"goal": "assumed", "audience": "missing", "scope": "missing", "context": "assumed"},
         [
@@ -255,7 +279,29 @@ def test_missing_items_are_asked_before_assumed_ones_then_in_checklist_order() -
         ],
     )
     result = normalize_assessment(raw, LIMITS, round_no=1)
-    assert [q.question for q in result.questions] == ["a", "s", "c", "g"]
+    assert [q.question for q in result.questions] == ["a", "s"]
+
+
+def test_an_item_that_was_asked_before_is_not_asked_again() -> None:
+    """The model re-opens answered items; one question per item is all the owner is asked."""
+    raw = assessment(
+        {"scope": "missing", "context": "missing"},
+        [question("scope", "Was nicht?"), question("context", "Welcher Hintergrund?")],
+    )
+    result = normalize_assessment(raw, LIMITS, round_no=2, asked={"scope"})
+    assert [q.question for q in result.questions] == ["Welcher Hintergrund?"]
+    assert checklist_of(result)["scope"] == "missing"  # still listed as not clarified later
+
+
+def test_the_interviewer_passes_the_items_of_earlier_answers() -> None:
+    answers = (Answer(round=1, item="scope", question="Was nicht?", candidate="x", kind="unknown"),)
+    raw = assessment(
+        {"scope": "missing", "goal": "missing"},
+        [question("scope", "Nochmal Umfang?"), question("goal", "Wofür?")],
+    )
+    r = rig({"Assessment": raw.model_dump()})
+    result = ask(r, answers=answers, round_no=2)
+    assert [q.item for q in result.questions] == ["goal"]
 
 
 def test_at_most_the_configured_number_of_questions() -> None:

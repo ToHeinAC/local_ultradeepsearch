@@ -33,8 +33,9 @@ draft_brief -> recommend -> decide (interrupt) -> revise | edit | settings | sav
 - The Output section comes from the session settings and configuration only: language, response
   format and its word range, template headings, `Quellen`/`Sources`, a language-mismatch notice.
   A settings change re-renders only this section, so a hand edit survives.
-- A question with a clear item, a repeated question, or a depth question is dropped; at most the
-  configured number is asked, missing items first.
+- A question is dropped unless its item is `missing`, was never asked about in an earlier round and
+  the question is not a repeat. So an assumed item is listed in the brief but never asked, and the
+  owner is asked about each item once; at most the configured number is asked, in checklist order.
 - The brief text is canonical (LF, one final newline) and its approval hash is the sha256 of those
   UTF-8 bytes. The archive holds exactly those bytes, with no front matter.
 

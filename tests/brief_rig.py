@@ -53,7 +53,7 @@ def q(item: str, text: str, candidate: str = "Vorschlag") -> dict[str, str]:
 
 
 ROUND_ONE = {
-    "checklist": checklist(audience="missing", scope="assumed", goal="missing"),
+    "checklist": checklist(audience="missing", scope="missing", goal="missing"),
     "questions": [q("audience", "Wer liest den Bericht?", "Ingenieure"), q("scope", "Was nicht?")],
     "finished_prompt": False,
 }

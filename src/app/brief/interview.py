@@ -5,7 +5,7 @@ code normalises what comes back so the loop does not depend on the model keeping
 tier recommendation think, because they run once per decision and quality matters there.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -57,13 +57,16 @@ def checklist_of(assessment: Assessment) -> Checklist:
     return {entry.item: entry.status for entry in assessment.checklist}
 
 
-def normalize_assessment(raw: Assessment, limits: Phase1Limits, *, round_no: int) -> Assessment:
+def normalize_assessment(
+    raw: Assessment, limits: Phase1Limits, *, round_no: int, asked: Collection[str] = ()
+) -> Assessment:
     """The model's assessment made safe to act on.
 
     One entry per checklist item (first one wins, missing ones are `missing`); depth is never
-    `missing` because the owner chooses the tier explicitly; no questions about clear items or
-    depth, none twice; missing items are asked before assumed ones; at most the configured number
-    of questions; only round 1 may report a finished prompt."""
+    `missing` because the owner chooses the tier explicitly; questions only about `missing` items
+    (a clear item needs none, an assumed one is listed in the brief), none twice, none about an
+    item in ``asked`` (the model re-opens answered items), in checklist order; at most the
+    configured number of questions; only round 1 may report a finished prompt."""
     first: dict[str, ChecklistEntry] = {}
     for entry in raw.checklist:
         first.setdefault(entry.item, entry)
@@ -78,16 +81,16 @@ def normalize_assessment(raw: Assessment, limits: Phase1Limits, *, round_no: int
     ]
     status = {e.item: e.status for e in entries}
     seen: set[str] = set()
-    asked: list[Question] = []
+    kept: list[Question] = []
     for q in raw.questions:
         key = normalize_for_match(q.question)
-        if q.item != "depth" and status[q.item] != "clear" and key not in seen:
+        if status[q.item] == "missing" and q.item not in asked and key not in seen:
             seen.add(key)
-            asked.append(q)
-    asked.sort(key=lambda q: (status[q.item] != "missing", CHECKLIST_ORDER.index(q.item)))
+            kept.append(q)
+    kept.sort(key=lambda q: CHECKLIST_ORDER.index(q.item))
     return Assessment(
         checklist=entries,
-        questions=asked[: limits.max_questions_per_round],
+        questions=kept[: limits.max_questions_per_round],
         finished_prompt=raw.finished_prompt and round_no == 1,
     )
 
@@ -129,7 +132,8 @@ class Interviewer:
             digest_block=_digest_block(digest),
         )
         raw = self._ask(ASSESS_SYSTEM, user, Assessment, think=False)
-        return normalize_assessment(raw, self._limits, round_no=round_no)
+        asked = {a.item for a in answers}
+        return normalize_assessment(raw, self._limits, round_no=round_no, asked=asked)
 
     def draft(
         self,
