@@ -94,8 +94,9 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   credits, 251 model calls (5 length retries). The report has 3543 words in 4 sections; the PDF is
   made, the DOCX failed because pandoc is not installed on this host. Time: decomposition 21 min,
   search plan 7, sweep 17, the rest 7. Findings:
-  1. The section headings are the research questions cut at 80 characters, mid-word ("… in
-     deutschen Bestan"): `clean_headings` fell back to them (`decompose.py`).
+  1. The section headings were the research questions cut at 80 characters, mid-word ("… in
+     deutschen Bestan"): `clean_headings` fell back to them (`decompose.py`). Fixed: the cut is
+     now at a word. Why the model's own headings were not used is unknown: the draft is not stored.
   2. Step 1 is slow: `reason` spends its whole 8192-token output on thinking, is retried with
      16384 and takes about 3.7 min a call; the coverage loop reported gaps again.
   3. ddgs failed transiently in 17 of 36 searches (3 queries gave nothing; DNS errors for a

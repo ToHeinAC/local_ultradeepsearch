@@ -50,6 +50,16 @@ class _Attempt:
     gaps: tuple[str, ...]
 
 
+def _fit_heading(text: str, limit: int = FALLBACK_HEADING_CHARS) -> str:
+    """``text`` cut at a word, never inside one; a word longer than ``limit`` is cut there."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    if text[limit] != " " and " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:(-\u2013")
+
+
 def clean_headings(raw: Sequence[str], questions: Sequence[str]) -> list[str]:
     """Derived headings made fit for a report: plain text, no duplicates, none reserved, at most
     the template maximum. With fewer than the template minimum the research questions become the
@@ -64,7 +74,7 @@ def clean_headings(raw: Sequence[str], questions: Sequence[str]) -> list[str]:
             headings.append(title)
     if len(headings) >= MIN_SECTIONS:
         return headings[:MAX_SECTIONS]
-    fallback = [" ".join(q.split()).rstrip("?.!:")[:FALLBACK_HEADING_CHARS] for q in questions]
+    fallback = [_fit_heading(" ".join(q.split()).rstrip("?.!:")) for q in questions]
     return list(dict.fromkeys(h for h in fallback if h))[:MAX_SECTIONS]
 
 

@@ -70,6 +70,34 @@ def test_clean_headings_falls_back_to_the_questions_when_the_model_gives_too_few
     assert clean_headings([], ["x" * 200, "y"])[0] == "x" * 80
 
 
+@pytest.mark.parametrize(
+    ("question", "heading"),
+    [  # from the first live Lite run, where the headings ended mid-word ("... in deutschen Bestan")
+        (
+            "Welche Jahresarbeitszahlen erreichen Luft-Wasser-Wärmepumpen in deutschen "
+            "Bestandsgebäuden im Feldbetrieb?",
+            "Welche Jahresarbeitszahlen erreichen Luft-Wasser-Wärmepumpen in deutschen",
+        ),
+        (
+            "Welche Voraussetzungen (Dämmstandard, Vorlauftemperatur, Heizflächen) "
+            "beeinflussen die Effizienz?",
+            "Welche Voraussetzungen (Dämmstandard, Vorlauftemperatur, Heizflächen)",
+        ),
+        (
+            "Wie hoch sind Investitions- und Betriebskosten, im Vergleich zu "
+            + "Gasheizungen " * 5,
+            "Wie hoch sind Investitions- und Betriebskosten, im Vergleich zu Gasheizungen",
+        ),
+    ],
+)
+def test_a_long_fallback_heading_is_cut_at_a_word_not_in_the_middle_of_one(
+    question: str, heading: str
+) -> None:
+    result = clean_headings([], [question, "Zweite Frage"])[0]
+    assert result == heading
+    assert len(result) <= 80
+
+
 def test_the_fallback_headings_are_unique_and_limited_too() -> None:
     assert clean_headings([], ["Gleiche Frage?", "Gleiche Frage", "Andere"]) == [
         "Gleiche Frage",
