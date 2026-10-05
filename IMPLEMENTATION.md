@@ -28,7 +28,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage; live: `tests/live/test_live_outbound.py` (9 passed), see §4 |
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live: `test_live_vault.py` ran, drop rate 0.75 (above R2), see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. live: `tests/live/test_live_brief.py` ran, see §4 |
-| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); the live Lite run (AC8) remains, see §4 |
+| 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | done | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); live AC8: a German Lite run passed the gate in 52 min, see §4 |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
@@ -57,7 +57,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/templates.py`, `templates/` | Report templates (front matter plus one H2 per section), validation, the five built-ins. |
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
-| `src/app/research/` | Phase 2 (M5, in progress): manifest and settings, `console.py` (the plan review of `udr run`), report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [docs/research.md](docs/research.md). |
+| `src/app/research/` | Phase 2 (M5): manifest and settings, `console.py` (the plan review of `udr run`), report rendering with code-owned citations, ship gate and its fixes, patch engine, decomposition, plan, sweep, evidence, drafting, polish, readability, export, worker lock, steps and service. See [docs/research.md](docs/research.md). |
 | `src/app/graphs/research.py`, `src/app/adapters/pandoc.py`, `src/app/research/pdf.py` | The `research` graph and its runner; the only code that starts pandoc (DOCX only); the in-process PDF renderer. See [docs/research.md](docs/research.md). |
 | `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
 | `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
@@ -79,7 +79,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 
 ## 4. Open issues
 
-- M5 (in progress): the PDF is made in-process with `reportlab` (BSD) and `markdown-it-py` (MIT),
+- M5: the PDF is made in-process with `reportlab` (BSD) and `markdown-it-py` (MIT),
   so no GPL, LGPL or MPL package is involved any more. `reportlab` brings `pillow` (MIT-CMU), an
   exception the owner accepted on 2026-10-04 ([AGENTS.md](AGENTS.md) §5.5). The PDF text uses the Bitstream Vera
   fonts that ship with ReportLab: Latin text is fine, a character outside Vera is shown as `?`.
@@ -87,9 +87,24 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   `include_domains` hints of the domain strategies are not passed to Tavily yet: they would
   restrict results, so M5 only ranks authoritative hosts first.
 
-- M5 has run only against fakes. The real models and the real gateway have not run the Lite
-  pipeline, so the prompts of steps 1 to 16 are unproven on real output; the German reference run
-  (AC8) waits for the owner's go-ahead and for the M2/M3/M4 live checks first (plan D12).
+- M5 live Lite run (AC8, 2026-10-05, run `r-20261005-112922-c2e21d`, German brief on heat pumps in
+  existing buildings, template `auto`, no Tavily key so search ran on ddgs): the ship gate passed in
+  52 min with no fix round and no warning. 62 sources and 6 source analyses, 423 claims kept and
+  96 dropped (drop rate 0.18; one batch of 48 had 0.35 and raised `extract_quality_low`), 0 Tavily
+  credits, 251 model calls (5 length retries). The report has 3543 words in 4 sections; the PDF is
+  made, the DOCX failed because pandoc is not installed on this host. Time: decomposition 21 min,
+  search plan 7, sweep 17, the rest 7. Findings:
+  1. The section headings are the research questions cut at 80 characters, mid-word ("… in
+     deutschen Bestan"): `clean_headings` fell back to them (`decompose.py`).
+  2. Step 1 is slow: `reason` spends its whole 8192-token output on thinking, is retried with
+     16384 and takes about 3.7 min a call; the coverage loop reported gaps again.
+  3. ddgs failed transiently in 17 of 36 searches (3 queries gave nothing; DNS errors for a
+     Wikipedia backend). Of 95 fetches, 33 were rejected (12 `http_403`, 15 `empty_text`).
+  4. Source quality is thin on the first factual question: commercial heat pump guides carry the
+     average annual performance factor, and two of the sources are US (NREL) documents for a
+     German question. Tavily and the domain strategies were not in play.
+  The prompts of steps 1 to 16 now ran on real output; their quality beyond this one run is
+  unmeasured.
 - `udr run` does not apply a run's `summarize_model` choice; the `summarize` role uses the registry's
   model for every run.
 - Run events go to `data/events.jsonl` with the model telemetry, not to a file per run.
