@@ -24,7 +24,7 @@ from app.prompts.untrusted import fence_untrusted
 from app.store.models import NewClaim, Note
 from app.text import contains_quote, normalize_for_match, strip_wrapping_quotes
 
-CHUNK_CHARS = 12_000  # about 4000 tokens; the extract context leaves 6144 for the prompt
+CHUNK_CHARS = 12_000  # about 4000 tokens, well inside the extract prompt budget
 CHUNK_CLAIM_LIMIT = 8
 MAX_QUOTE_CHARS = 500
 LEAD_CHARS = 400

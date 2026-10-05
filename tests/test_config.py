@@ -19,10 +19,10 @@ def test_defaults_match_the_prd() -> None:
     assert (s.own_ollama_port, s.own_ollama_gpu) == (11436, 1)
     assert s.own_ollama_startup_timeout_s == 30
     assert s.model_reason == "qwen3.8-27b:latest"
-    assert s.model_extract == "LiquidAI/lfm2.5-1.2b-instruct:latest"
+    assert s.model_extract == "gemma4:e4b"
     assert s.model_summarize == "gemma4:e4b"
     assert s.model_ocr == "deepseek-ocr:3b"
-    assert (s.num_ctx_extract, s.num_ctx_summarize, s.num_ctx_ocr) == (8192, 16384, 8192)
+    assert (s.num_ctx_extract, s.num_ctx_summarize, s.num_ctx_ocr) == (16384, 16384, 8192)
     assert s.llm_timeout_s == 900
     assert s.min_free_disk_gb == 20
 

@@ -81,7 +81,8 @@ def test_every_missing_model_is_named_with_its_endpoint() -> None:
     assert "gemma4:e4b" in checks["model:summarize"].detail
     assert SHARED in checks["model:summarize"].detail
     assert checks["model:ocr"].level is Level.ERROR
-    assert checks["model:extract"].level is Level.OK
+    assert checks["model:extract"].level is Level.ERROR  # extract shares the summarize model
+    assert SHARED in checks["model:extract"].detail
     assert exit_code(list(checks.values())) == 1
 
 

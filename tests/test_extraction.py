@@ -28,7 +28,7 @@ FOCUS = Focus(
     questions=("How long does dismantling take?", "What does it cost?"),
 )
 URLS = {Endpoint.OWN: "http://own", Endpoint.SHARED: "http://shared"}
-REGISTRY = build_registry(make_settings())
+REGISTRY = build_registry(make_settings(model_extract="extract-test:1b"))
 EXTRACT_MODEL = REGISTRY[Role.EXTRACT].model
 SUMMARIZE_MODEL = REGISTRY[Role.SUMMARIZE].model
 Handler = Callable[[ChatRequest], ChatReply | Exception]
@@ -165,7 +165,7 @@ def test_the_request_uses_the_extract_role_with_the_claim_schema() -> None:
     r.extractor.extract(make_note(), FOCUS)
     request = r.transport.calls[0]
     assert request.model == EXTRACT_MODEL
-    assert r.transport.urls[0] == "http://own"
+    assert r.transport.urls[0] == "http://shared"
     assert request.schema == ChunkExtraction.model_json_schema()
     assert request.think is False
     assert f"at most {CHUNK_CLAIM_LIMIT} claims" in request.messages[-1]["content"]

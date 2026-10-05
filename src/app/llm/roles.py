@@ -41,7 +41,7 @@ def build_registry(settings: Settings, reason_num_ctx: int | None = None) -> dic
         Role.EXTRACT: _spec(
             Role.EXTRACT,
             settings.model_extract,
-            Endpoint.OWN,
+            Endpoint.SHARED,  # the summarize model, already loaded there (PRD R2)
             settings.num_ctx_extract,
             num_predict=2048,
             temperature=0.0,

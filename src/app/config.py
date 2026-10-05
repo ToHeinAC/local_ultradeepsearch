@@ -48,10 +48,10 @@ class Settings(BaseSettings):
     ollama_models_dir: Path | None = None
 
     model_reason: str = Field(default="qwen3.8-27b:latest", min_length=1)
-    model_extract: str = Field(default="LiquidAI/lfm2.5-1.2b-instruct:latest", min_length=1)
+    model_extract: str = Field(default="gemma4:e4b", min_length=1)
     model_summarize: str = Field(default="gemma4:e4b", min_length=1)
     model_ocr: str = Field(default="deepseek-ocr:3b", min_length=1)
-    num_ctx_extract: int = Field(default=8192, ge=1024)
+    num_ctx_extract: int = Field(default=16384, ge=1024)  # = summarize: no reload
     num_ctx_summarize: int = Field(default=16384, ge=1024)
     num_ctx_ocr: int = Field(default=8192, ge=1024)
 

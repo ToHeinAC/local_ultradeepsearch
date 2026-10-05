@@ -31,7 +31,7 @@ The GUI and the service API are not built yet. Phase status:
 ## Quickstart
 
 Requirements: [uv](https://docs.astral.sh/uv/), git, Ollama with an NVIDIA GPU, and these models
-pulled: `qwen3.8-27b:latest`, `LiquidAI/lfm2.5-1.2b-instruct:latest`, `gemma4:e4b`,
+pulled: `qwen3.8-27b:latest`, `gemma4:e4b`,
 `deepseek-ocr:3b`. uv installs Python itself.
 
 ```bash

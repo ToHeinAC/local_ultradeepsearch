@@ -24,7 +24,7 @@ endpoints: PRD §3.1.
 | Role | Endpoint | num_ctx | num_predict | temperature | keep_alive | Max concurrent |
 |---|---|---|---|---|---|---|
 | reason | own | calibrated, else 16384 | 8192 | 0.2 | 30m | 1 |
-| extract | own | 8192 | 2048 | 0.0 | 30m | 2 |
+| extract | shared | 16384 | 2048 | 0.0 | 30m | 2 |
 | summarize | shared | 16384 | 4096 | 0.1 | 10m | 2 |
 | ocr | shared | 8192 | 4096 | 0.0 | 5m | 1 |
 

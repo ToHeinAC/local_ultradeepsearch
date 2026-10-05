@@ -25,8 +25,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 |---|---|---|---|
 | 0 | Blueprint skeleton (no PRD milestone) | done | full gate green |
 | 1 | M1: Foundation and model infrastructure ([plan](docs/plans/m1-foundation.md)) | done | 209 offline tests, 99 % branch coverage; live: `udr doctor --calibrate` and `pytest -m live` (6 passed), see [docs/ollama-runtime.md](docs/ollama-runtime.md) |
-| 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage. Live outbound check not yet run, see §4 |
-| 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live check not yet run, see §4 |
+| 2 | M2: Outbound gateway and retrieval adapters ([plan](docs/plans/m2-outbound.md)) | done | AC1–AC7 offline: `test_gateway.py`, `test_denylist.py`, `test_guard.py`, `test_outbound_infra.py`, `test_egress_guard.py`; 449 offline tests, 98 % branch coverage; live: `tests/live/test_live_outbound.py` (9 passed), see §4 |
+| 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live: `test_live_vault.py` ran, drop rate 0.75 (above R2), see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. Live check not yet run, see §4 |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | in progress | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); the live Lite run (AC8) remains, see §4 |
 | 6 | M6: Service — REST, MCP, worker | planned | route auth table, crash-resume, in-process MCP tests |
@@ -106,13 +106,18 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   6. M3 compares MinHash signatures all-pairs instead of through an LSH index, and `datasketch` is
      pinned to one hash scheme. `Vault` is bound to one run id, and the near-duplicate index holds
      originals only. These are implementation choices inside the PRD's "MinHash, threshold 0.6".
-- The live outbound check (`tests/live/test_live_outbound.py`) has not been run: the run was
-  declined in the session that built M2. Tavily is only exercised there with `TAVILY_API_KEY` in
-  this project's `.env`. `OPENALEX_API_KEY` is supported but not yet configured (the owner adds
-  it later); OpenAlex works without it at a lower rate budget.
-- The M3 pipeline has not run against the real `extract` model: `claims_drop_rate` on real pages is
-  unmeasured. Above 0.30 is PRD risk R2 (propose `UDR_MODEL_EXTRACT` = a gemma model). The check
-  needs the network and our Ollama, so it waits for the owner's go-ahead.
+- The live outbound check (`tests/live/test_live_outbound.py`) ran on 2026-10-05, verified by
+  Tobias: 9 passed. Tavily is only exercised there with `TAVILY_API_KEY` in this project's `.env`;
+  whether that test ran or was skipped was not checked. `OPENALEX_API_KEY` is supported but not yet
+  configured (the owner adds it later); OpenAlex works without it at a lower rate budget.
+- M3 live check (`tests/live/test_live_vault.py`, 2026-10-05, 2 Wikipedia pages, one run per
+  model): `claims_drop_rate` was 0.75 with `lfm2.5-1.2b` (above the 0.30 of PRD risk R2), 0.41 with
+  `gemma4:e2b`, 0.34 with `gemma4:e4b` and 0.30 with `gemma4:26b`. Per R2, `extract` now uses the
+  `summarize` model on the shared daemon ([docs/ollama-runtime.md](docs/ollama-runtime.md)). Most
+  drops are near-verbatim quotes (stitched or reworded passages). Ignoring trailing punctuation and
+  `<sup>[n]</sup>` markers would give 0.29 (`e2b`), 0.32 (`e4b`) and 0.25 (`26b`); that loosens
+  the verbatim gate (also used by the ship gate), so it needs the owner's decision. Plain-prose
+  pages are untested.
 - Tavily's provider switch and an interrupted outbound log line are not fully durable across a
   restart; see [docs/vault.md](docs/vault.md) (Resuming).
 - M4 builds the template loader and the four built-in templates that PRD M5 lists, because the

@@ -25,15 +25,7 @@ def test_defaults_match_the_prd_table() -> None:
     assert set(reg) == set(Role)
     expected = {
         Role.REASON: ("qwen3.8-27b:latest", Endpoint.OWN, 16384, 8192, 0.2, "30m", 1),
-        Role.EXTRACT: (
-            "LiquidAI/lfm2.5-1.2b-instruct:latest",
-            Endpoint.OWN,
-            8192,
-            2048,
-            0.0,
-            "30m",
-            2,
-        ),
+        Role.EXTRACT: ("gemma4:e4b", Endpoint.SHARED, 16384, 2048, 0.0, "30m", 2),
         Role.SUMMARIZE: ("gemma4:e4b", Endpoint.SHARED, 16384, 4096, 0.1, "10m", 2),
         Role.OCR: ("deepseek-ocr:3b", Endpoint.SHARED, 8192, 4096, 0.0, "5m", 1),
     }

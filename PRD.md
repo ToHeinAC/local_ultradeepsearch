@@ -76,7 +76,7 @@ search queries.
 | Role | Default model | Endpoint | Used for |
 |---|---|---|---|
 | `reason` | `qwen3.8-27b:latest` | own instance `127.0.0.1:11436`, pinned to one GPU | Phase-1 dialogue, tier recommendation, planning, next-action choice, analysis, drafting, synthesis, critics, patch hunks, cite verdicts, polish, query sanitizer |
-| `extract` | `LiquidAI/lfm2.5-1.2b-instruct:latest` | own instance | Note summaries, claims, lead extraction (never rewrites source text) |
+| `extract` | `gemma4:e4b`, the `summarize` model (R2) | shared daemon | Note summaries, claims, lead extraction (never rewrites source text) |
 | `summarize` | `gemma4:e4b` (`gemma4:e2b` selectable per run) | shared daemon `127.0.0.1:11434` | Upload distillation, long-source map-reduce, intermediate summaries, utility scoring, evidence-digest grouping, readability recommendations |
 | `ocr` | `deepseek-ocr:3b` | shared daemon | Upload pages without a text layer |
 
@@ -91,7 +91,7 @@ search queries.
   - `reason` gets the largest `num_ctx` in {32768, 24576, 16384, 12288} that loads 100 % into
     VRAM, i.e. `/api/ps` reports `size_vram == size`. `udr doctor --calibrate` measures it and
     stores it in `data/calibration.json`.
-  - `extract` gets 8192, `summarize` 16384.
+  - `extract` and `summarize` get 16384, so one loaded model on the shared daemon serves both.
   - Prompts are assembled against `num_ctx` minus the output reserve, estimating tokens as
     chars/3.
   - Overflow goes through map-reduce (`summarize`), and every chunk is processed. Evidence is
@@ -759,7 +759,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 | # | Risk | Mitigation | Revisit when |
 |---|---|---|---|
 | R1 | Local 27B is far below Opus in drafting and critique | AD1–AD5 put the structure in code; ship gate; section-wise generation | Reference runs stay `blocked` after 3 fix rounds |
-| R2 | LFM-1.2B produces weak or unfaithful claims | Verbatim quote check; drop counter | `claims_drop_rate` > 30 % → switch `extract` to the `summarize` model |
+| R2 | The `extract` model produces weak or unfaithful claims | Verbatim quote check; drop counter | `claims_drop_rate` > 30 % → switch `extract` to the `summarize` model. Triggered 2026-10-05: LFM-1.2B measured 0.75, so `extract` now uses the `summarize` model on the shared daemon (a gemma4 model next to `reason` on the own GPU evicts `reason`) |
 | R3 | Sanitizer misses a confidential term | Denylist (hard), plan review, outbound log | Any confidential term appears in `outbound.jsonl` |
 | R4 | DuckDuckGo blocks the unofficial API | Backoff; gaps documented; run continues | > 20 % of fallback queries fail |
 | R5 | Tavily free plan (1000/month) covers only ~3 Full runs | Local-first fetch; per-run cap; automatic ddgs switch | Limit reached before day 20, twice |

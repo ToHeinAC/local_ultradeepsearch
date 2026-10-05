@@ -7,10 +7,16 @@ How the app reaches its models and checks that it can. Requirements: [PRD.md](..
 
 | Endpoint | Default URL | Roles | Why |
 |---|---|---|---|
-| shared | `http://127.0.0.1:11434` (system daemon) | summarize, ocr | Other apps use it; we never change it |
-| own | `http://127.0.0.1:11436` | reason, extract | Pinned to one GPU so its VRAM is predictable |
+| shared | `http://127.0.0.1:11434` (system daemon) | summarize, extract, ocr | Other apps use it; we never change it |
+| own | `http://127.0.0.1:11436` | reason | Pinned to one GPU so its VRAM is predictable |
 
 Both URLs must be loopback; `Settings` rejects anything else and the adapters refuse it again.
+
+`extract` uses the `summarize` model with the same `num_ctx` (16384), so on the shared daemon one
+loaded copy serves both roles. On the own GPU it would not fit next to `reason`: measured with
+Ollama 0.31.1, loading any gemma4 model there (even `gemma4:e2b`, 1.8 GiB) unloads `reason`
+(18 GiB at 32768), while `lfm2.5-1.2b` (0.9 GiB) stays loaded beside it. The scheduler seems to
+plan gemma4 by its file size (7–10 GB), not its loaded size.
 
 ## Own instance
 
@@ -96,10 +102,10 @@ All variables are optional. They are read from the environment and from `.env`.
 | `UDR_OLLAMA_BINARY` | `ollama` |
 | `UDR_OLLAMA_MODELS_DIR` | auto (see above) |
 | `UDR_MODEL_REASON` | `qwen3.8-27b:latest` |
-| `UDR_MODEL_EXTRACT` | `LiquidAI/lfm2.5-1.2b-instruct:latest` |
+| `UDR_MODEL_EXTRACT` | `gemma4:e4b` |
 | `UDR_MODEL_SUMMARIZE` | `gemma4:e4b` |
 | `UDR_MODEL_OCR` | `deepseek-ocr:3b` |
-| `UDR_NUM_CTX_EXTRACT` / `_SUMMARIZE` / `_OCR` | `8192` / `16384` / `8192` |
+| `UDR_NUM_CTX_EXTRACT` / `_SUMMARIZE` / `_OCR` | `16384` / `16384` / `8192` |
 | `UDR_LLM_TIMEOUT_S` | `900` (per transport call, includes model load) |
 | `UDR_MIN_FREE_DISK_GB` | `20` |
 

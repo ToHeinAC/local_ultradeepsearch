@@ -63,7 +63,7 @@ def test_structured_returns_a_validated_model_and_sends_the_schema() -> None:
 def test_roles_are_routed_to_their_endpoints() -> None:
     r = rig([reply(GOOD), reply(GOOD)])
     r.service.structured(Role.SUMMARIZE, ASK, Answer)
-    r.service.structured(Role.EXTRACT, ASK, Answer)
+    r.service.structured(Role.REASON, ASK, Answer)
     assert [url for url, _ in r.transport.calls] == ["http://shared", "http://own"]
 
 
@@ -126,9 +126,9 @@ def test_truncated_error_after_a_second_length_stop() -> None:
 
 
 def test_length_without_headroom_raises_without_a_pointless_retry() -> None:
-    # extract: num_ctx 8192, num_predict 2048. A prompt of exactly 6144 tokens
+    # extract: num_ctx 16384, num_predict 2048. A prompt of exactly 14336 tokens
     # leaves no room to grow the output budget.
-    edge: tuple[Message, ...] = ({"role": "user", "content": "x" * (3 * 6144)},)
+    edge: tuple[Message, ...] = ({"role": "user", "content": "x" * (3 * 14336)},)
     r = rig([reply("{", done_reason="length")])
     with pytest.raises(LLMTruncatedError):
         r.service.structured(Role.EXTRACT, edge, Answer)
@@ -162,11 +162,11 @@ def test_missing_model_is_never_retried() -> None:
 
 
 def test_prompt_too_large_never_reaches_the_transport() -> None:
-    huge: tuple[Message, ...] = ({"role": "user", "content": "x" * (3 * 9000)},)
+    huge: tuple[Message, ...] = ({"role": "user", "content": "x" * (3 * 15000)},)
     r = rig([])
     with pytest.raises(PromptTooLargeError) as err:
-        r.service.structured(Role.EXTRACT, huge, Answer)  # extract budget: 8192 - 2048
-    assert (err.value.estimate, err.value.limit) == (9000, 6144)
+        r.service.structured(Role.EXTRACT, huge, Answer)  # extract budget: 16384 - 2048
+    assert (err.value.estimate, err.value.limit) == (15000, 14336)
     assert r.transport.calls == []
 
 
