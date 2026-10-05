@@ -137,6 +137,16 @@ def test_unknown_item_ids_and_a_narrowed_scope_count_as_gaps() -> None:
     assert result.gaps == ("A", "B")
 
 
+def test_the_thinking_breakdown_gets_the_larger_output_budget() -> None:
+    """The first live run threw away a call at the default limit every attempt."""
+    models = ResearchModels()
+    events = MemoryEventSink()
+    decomposer = Decomposer(llm(models, events, reason_num_ctx=32768), RULES, events)
+    decomposer.decompose(brief=BRIEF, settings=RUN_SETTINGS, template=TECH)
+    assert models.num_predicts["DecompositionDraft"] == [RULES.thinking_num_predict]
+    assert models.num_predicts["CoverageMatrix"] == [8192]  # no thinking, the default is enough
+
+
 def test_gaps_that_remain_after_the_last_iteration_are_reported() -> None:
     gap = {"rows": [{"phrase": "Strahlenschutz", "items": [], "scope_ok": True}]}
     models = ResearchModels(matrices=[gap])

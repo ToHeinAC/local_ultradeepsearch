@@ -32,7 +32,10 @@ endpoints: PRD §3.1.
 
 ## A call, step by step
 
-`structured(role, messages, schema, think=False)`:
+`structured(role, messages, schema, think=False, num_predict=None)`. `num_predict` asks for a larger
+output budget than the role's default, capped at half of `num_ctx`; steps 1 and 2 use it for their
+thinking calls (`thinking_num_predict` in `config/profiles.toml`), because a call cut at 8192 is
+thrown away and repeated. Below, `num_predict` is the budget of the call:
 
 1. **Budget.** If the estimated prompt (characters / 3) exceeds `num_ctx - num_predict`, raise
    `PromptTooLargeError`. Nothing is sent and nothing is truncated.

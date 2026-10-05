@@ -61,6 +61,7 @@ readability_cap = 50
 # Thresholds of both tiers.
 [research.rules]
 coverage_matrix_max_iterations = 3
+thinking_num_predict = 16384       # the thinking calls of steps 1 and 2 use 8000-11500 tokens
 thin_item_sources = 2              # an atomic item with fewer sources is thin
 well_covered_sources = 4           # ... and with this many or more, well covered
 plan_supplement_rounds = 2         # extra model calls to fill what a search plan lacks

@@ -270,6 +270,7 @@ class ResearchModels:
     errors: dict[str, Exception] = field(default_factory=lambda: {})
     calls: dict[str, int] = field(default_factory=lambda: {})
     prompts: dict[str, list[str]] = field(default_factory=lambda: {})
+    num_predicts: dict[str, list[int]] = field(default_factory=lambda: {})
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def count(self, kind: str) -> int:
@@ -281,6 +282,7 @@ class ResearchModels:
             self.calls[kind] = self.calls.get(kind, 0) + 1
             number = self.calls[kind]
             self.thinks.setdefault(kind, []).append(request.think)
+            self.num_predicts.setdefault(kind, []).append(request.num_predict)
             self.models_used.setdefault(kind, set()).add(request.model)
             self.prompts.setdefault(kind, []).append(
                 "\n".join(m["content"] for m in request.messages)
@@ -330,9 +332,14 @@ class ResearchModels:
         raise AssertionError(f"no scripted answer for {kind}")
 
 
-def llm(models: ResearchModels, events: MemoryEventSink | None = None) -> LLMService:
+def llm(
+    models: ResearchModels,
+    events: MemoryEventSink | None = None,
+    *,
+    reason_num_ctx: int | None = None,
+) -> LLMService:
     return LLMService(
-        REGISTRY,
+        REGISTRY if reason_num_ctx is None else build_registry(SETTINGS, reason_num_ctx),
         URLS,
         CallbackTransport(models),
         events or MemoryEventSink(),

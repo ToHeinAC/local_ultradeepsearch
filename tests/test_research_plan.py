@@ -143,6 +143,18 @@ def test_a_time_period_without_a_period_pinned_query_is_asked_for() -> None:
     assert [(p.item, p.lens) for p in plan.queries if p.item == "P1"] == [("P1", "D")]
 
 
+def test_the_thinking_plan_gets_the_larger_output_budget_and_the_supplements_do_not() -> None:
+    short = {"queries": [q("Q1", "A", "Rückbau Dauer")]}
+    models = ResearchModels(plans=[short])
+    events = MemoryEventSink()
+    planner = Planner(
+        llm(models, events, reason_num_ctx=32768), RULES, LIGHT, FakePreparer(), events
+    )
+    planner.plan(BRIEF, DECOMPOSITION, "")
+    assert models.thinks["PlanDraft"] == [True, False, False]
+    assert models.num_predicts["PlanDraft"] == [RULES.thinking_num_predict, 8192, 8192]
+
+
 def test_supplementing_stops_after_the_configured_rounds_and_uncovered_items_get_a_query() -> None:
     short = {"queries": [q("Q1", "A", "Rückbau Dauer")]}
     models = ResearchModels(plans=[short])

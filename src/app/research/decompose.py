@@ -154,7 +154,13 @@ class Decomposer:
             {"role": "system", "content": prompts.DECOMPOSE_SYSTEM},
             {"role": "user", "content": user},
         ]
-        return self._service.structured(Role.REASON, messages, DecompositionDraft, think=True)
+        return self._service.structured(
+            Role.REASON,
+            messages,
+            DecompositionDraft,
+            think=True,
+            num_predict=self._rules.thinking_num_predict,
+        )
 
     @staticmethod
     def _build(

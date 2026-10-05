@@ -40,11 +40,11 @@ class Rig:
     sleeps: list[float]
 
 
-def rig(script: list[ChatReply | Exception]) -> Rig:
+def rig(script: list[ChatReply | Exception], reason_num_ctx: int | None = None) -> Rig:
     transport = ScriptedTransport(script)
     events = MemoryEventSink()
     sleeps: list[float] = []
-    registry = build_registry(make_settings())
+    registry = build_registry(make_settings(), reason_num_ctx)
     service = LLMService(registry, URLS, transport, events, timeout_s=5, sleep=sleeps.append)
     return Rig(service, transport, events, sleeps)
 
@@ -65,6 +65,29 @@ def test_roles_are_routed_to_their_endpoints() -> None:
     r.service.structured(Role.SUMMARIZE, ASK, Answer)
     r.service.structured(Role.REASON, ASK, Answer)
     assert [url for url, _ in r.transport.calls] == ["http://shared", "http://own"]
+
+
+def test_a_call_can_ask_for_a_larger_output_budget() -> None:
+    """Thinking calls need more than the role's default: a call cut at the default is repeated."""
+    r = rig([reply(GOOD), reply(GOOD)], reason_num_ctx=32768)
+    r.service.structured(Role.REASON, ASK, Answer, think=True, num_predict=16384)
+    r.service.structured(Role.REASON, ASK, Answer)
+    assert [c[1].num_predict for c in r.transport.calls] == [16384, 8192]
+
+
+def test_a_larger_output_budget_never_exceeds_half_the_context() -> None:
+    r = rig([reply(GOOD)])  # reason has 16384 of context until it is calibrated
+    r.service.structured(Role.REASON, ASK, Answer, num_predict=16384)
+    assert r.transport.calls[0][1].num_predict == 8192
+
+
+def test_the_prompt_budget_follows_the_larger_output_budget() -> None:
+    r = rig([], reason_num_ctx=32768)
+    huge: tuple[Message, ...] = ({"role": "user", "content": "x" * (3 * 17000)},)
+    with pytest.raises(PromptTooLargeError) as err:
+        r.service.structured(Role.REASON, huge, Answer, num_predict=16384)
+    assert err.value.limit == 32768 - 16384
+    assert r.transport.calls == []
 
 
 def test_think_flag_is_passed_through() -> None:

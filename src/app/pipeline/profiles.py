@@ -96,6 +96,7 @@ class RunRules(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     coverage_matrix_max_iterations: int = Field(gt=0)
+    thinking_num_predict: int = Field(gt=0)  # output budget of the long thinking calls of steps 1-2
     thin_item_sources: int = Field(gt=0)  # fewer sources than this and an item is thin
     well_covered_sources: int = Field(gt=0)  # this many or more and an item is well covered
     plan_supplement_rounds: int = Field(ge=0)  # extra model calls to fill what a plan lacks

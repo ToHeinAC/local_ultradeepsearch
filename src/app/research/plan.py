@@ -211,7 +211,13 @@ class Planner:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        return self._service.structured(Role.REASON, messages, PlanDraft, think=think)
+        return self._service.structured(
+            Role.REASON,
+            messages,
+            PlanDraft,
+            think=think,
+            num_predict=self._rules.thinking_num_predict if think else None,
+        )
 
     @staticmethod
     def _more(queries: Sequence[PlanQueryDraft], missing: str) -> str:

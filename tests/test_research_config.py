@@ -43,6 +43,7 @@ def test_an_unknown_budget_is_an_error() -> None:
 def test_run_rules_hold_the_gate_numbers() -> None:
     rules = load_run_rules(config_dir())
     assert rules.coverage_matrix_max_iterations == 3
+    assert rules.thinking_num_predict == 16384
     assert rules.gate_fix_rounds == 3
     assert rules.thin_item_sources == 2
     assert rules.hunk_max_chars == 1200

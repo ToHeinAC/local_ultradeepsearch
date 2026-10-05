@@ -97,8 +97,13 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
   1. The section headings were the research questions cut at 80 characters, mid-word ("… in
      deutschen Bestan"): `clean_headings` fell back to them (`decompose.py`). Fixed: the cut is
      now at a word. Why the model's own headings were not used is unknown: the draft is not stored.
-  2. Step 1 is slow: `reason` spends its whole 8192-token output on thinking, is retried with
-     16384 and takes about 3.7 min a call; the coverage loop reported gaps again.
+  2. Step 1 was slow (21 of 52 min). `reason` thinks, and in 5 calls of the run the thinking used
+     the whole 8192-token output, so the call was thrown away and repeated at 16384: about 3 min
+     each, 15 min in all. Calls that finished needed 7800 to 11450 tokens. Fixed for the thinking
+     calls of steps 1 and 2 (`thinking_num_predict` 16384, per call, so the prompt budget of the
+     other calls is unchanged): step 1 alone took 10.7 min with no length retry in one live check.
+     The coverage loop still reports gaps that a new breakdown does not close: the matrix marks
+     generic terms ("Wärmepumpen", "Effizienz") as `NARROWED` although items map to them.
   3. ddgs failed transiently in 17 of 36 searches (3 queries gave nothing; DNS errors for a
      Wikipedia backend). Of 95 fetches, 33 were rejected (12 `http_403`, 15 `empty_text`).
   4. Source quality is thin on the first factual question: commercial heat pump guides carry the

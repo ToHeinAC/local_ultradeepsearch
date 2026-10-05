@@ -56,15 +56,24 @@ class LLMService:
         }
 
     def structured(
-        self, role: Role, messages: Sequence[Message], schema: type[M], *, think: bool = False
+        self,
+        role: Role,
+        messages: Sequence[Message],
+        schema: type[M],
+        *,
+        think: bool = False,
+        num_predict: int | None = None,
     ) -> M:
-        """Ask ``role`` for a ``schema`` object; repair invalid output up to twice."""
+        """Ask ``role`` for a ``schema`` object; repair invalid output up to twice.
+
+        ``num_predict`` asks for a larger output budget than the role's default, for calls whose
+        thinking needs it; it never exceeds half the context."""
         spec = self._registry[role]
         json_schema = schema.model_json_schema()
         convo: Sequence[Message] = tuple(messages)
         raw, error = "", ""
         for attempt in range(MAX_REPAIRS + 1):
-            raw = strip_think(self._complete(spec, convo, json_schema, think).content)
+            raw = strip_think(self._complete(spec, convo, json_schema, think, num_predict).content)
             try:
                 return parse_structured(raw, schema)
             except StructuredParseError as exc:
@@ -90,10 +99,12 @@ class LLMService:
         messages: Sequence[Message],
         schema: dict[str, Any] | None,
         think: bool,
+        num_predict: int | None = None,
     ) -> ChatReply:
         """Budget check, one call, and one larger retry if the model hit its output limit."""
+        budget = min(num_predict or spec.num_predict, spec.num_ctx // 2)
         estimate = estimate_tokens(messages)
-        limit = spec.num_ctx - spec.num_predict
+        limit = spec.num_ctx - budget
         if estimate > limit:
             raise PromptTooLargeError(estimate=estimate, limit=limit)
         request = ChatRequest(
@@ -102,15 +113,15 @@ class LLMService:
             schema,
             think,
             spec.num_ctx,
-            spec.num_predict,
+            budget,
             spec.temperature,
             spec.keep_alive,
         )
         result = self._send(spec, request)
         if result.done_reason != "length":
             return result
-        grown = min(spec.num_predict * 2, spec.num_ctx - estimate)
-        if grown <= spec.num_predict:  # no room left to grow: a retry would change nothing
+        grown = min(budget * 2, spec.num_ctx - estimate)
+        if grown <= budget:  # no room left to grow: a retry would change nothing
             raise self._truncated(spec, result)
         self._events.emit(
             "llm_length_retry", level="warning", role=spec.role.value, num_predict=grown
