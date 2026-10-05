@@ -6,6 +6,7 @@ from support import encrypted_pdf, make_docx, make_pdf
 
 from app.documents import (
     DocumentError,
+    clean_ocr,
     decode_text,
     docx_text,
     encode_png_gray,
@@ -187,6 +188,30 @@ def test_mostly_control_characters_are_binary() -> None:
 
 def test_line_endings_are_unified() -> None:
     assert decode_text(b"a\r\nb\rc") == "a\nb\nc"
+
+
+# ---- OCR output -----------------------------------------------------------------------------
+
+LIVE_OCR = (
+    "<|im_end|>\n<|md_start|>Mit freundlichen Grüßen\n<|md_end|>"
+    "<|<seg_1>Zwischenlager Ahaus</seg_1><br/>\n"
+    "<|md_start|>Genehmigung 2026-0815</md_start><br/>\n"
+    "<|md_end|>Kosten 1250 Euro je Tonne"
+)
+
+
+def test_ocr_markup_is_removed_and_the_text_kept_line_by_line() -> None:
+    assert clean_ocr(LIVE_OCR) == (
+        "Mit freundlichen Grüßen\nZwischenlager Ahaus\nGenehmigung 2026-0815\n"
+        "Kosten 1250 Euro je Tonne"
+    )
+
+
+@pytest.mark.parametrize(
+    "text", ["Plain text.", "Zeile 1\n\nZeile 2", "a < b and c > d", "x <y> z"]
+)
+def test_text_without_ocr_markup_is_unchanged(text: str) -> None:
+    assert clean_ocr(text) == text
 
 
 # ---- pseudo pages ---------------------------------------------------------------------------

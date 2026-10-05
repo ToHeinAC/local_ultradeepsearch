@@ -191,6 +191,16 @@ def decode_text(body: bytes) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+_OCR_LINE_BREAK = re.compile(r"<br\s*/?>\n?")
+_OCR_MARKUP = re.compile(r"<\|[^<>|]*\|>|<\|(?=<)|</?(?:seg_\d+|md_start|md_end)>")
+
+
+def clean_ocr(text: str) -> str:
+    """OCR output without the model's markup (special tokens, `<seg_n>`, `<md_*>`); `<br/>` is a
+    line break. Text without markup is only stripped."""
+    return _OCR_MARKUP.sub("", _OCR_LINE_BREAK.sub("\n", text)).strip()
+
+
 def split_pages(text: str, chars: int) -> list[str]:
     """Pseudo pages of at most ``chars`` characters for formats without pages (DOCX, MD, TXT)."""
     return split_paragraph_chunks(text, chars)

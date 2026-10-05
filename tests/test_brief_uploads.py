@@ -541,6 +541,14 @@ def test_a_page_without_text_is_read_by_the_ocr_model_at_200_dpi(tmp_path: Path)
     assert any("Gescannter Text" in c.messages[-1]["content"] for c in r.models.facts_calls)
 
 
+def test_the_ocr_markup_does_not_reach_the_stored_page(tmp_path: Path) -> None:
+    models = Models(ocr_text="<|im_end|>\n<|md_start|>Kosten 1250 Euro je Tonne<br/>\n<|md_end|>")
+    r = rig(tmp_path, models)
+    r.ingestor.accept(r.session_id, [pdf("scan.pdf", (text_page(1), ""))])
+    r.process()
+    assert r.store.uploads(r.session_id)[0].page_texts[1] == "Kosten 1250 Euro je Tonne"
+
+
 @pytest.mark.parametrize(("chars", "ocred"), [(49, True), (50, False)])
 def test_the_ocr_threshold_is_50_characters(tmp_path: Path, chars: int, ocred: bool) -> None:
     r = rig(tmp_path)

@@ -26,6 +26,7 @@ from app.brief.labels import labels_for
 from app.brief.schemas import UploadFacts
 from app.documents import (
     DocumentError,
+    clean_ocr,
     decode_text,
     docx_text,
     pdf_page_count,
@@ -285,7 +286,7 @@ class UploadIngestor:
             "content": OCR_PAGE,
             "images": [base64.b64encode(png).decode("ascii")],
         }
-        return self._llm.text(Role.OCR, [message]).strip()
+        return clean_ocr(self._llm.text(Role.OCR, [message]))
 
     def _pdf_pages(self, name: str, data: bytes) -> tuple[list[str], list[str]]:
         """Text layer per page; a page with too little text is read by the OCR model."""

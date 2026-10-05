@@ -54,7 +54,7 @@ recommendation). One lock per session means the first of two approvals wins.
   DOCX, MD, TXT by extension and magic bytes. Encrypted, corrupt, empty and binary files are
   rejected with the file name and the rule. A rejected batch leaves no rows and no files.
 - **Reading.** PDF text per page; a page with fewer than 50 characters goes to the `ocr` role as a
-  greyscale PNG at 200 dpi, and the longer text wins. A missing OCR model skips the remaining
+  greyscale PNG at 200 dpi, `clean_ocr` strips the OCR model's markup tokens, and the longer text wins. A missing OCR model skips the remaining
   scanned pages with one warning. DOCX, MD and TXT are cut into pseudo pages of 3000 characters.
 - **Distilling.** The `summarize` role lists facts per part of a file (page markers inside an
   untrusted-source fence); facts naming a page outside their part are dropped.
