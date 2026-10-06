@@ -2,14 +2,16 @@
 OpenAPI endpoint are off (the schema is still built, `app.openapi()`)."""
 
 import time
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api.errors import HANDLED, to_http
 from app.api.facade import Facade
-from app.api.keys import ApiKey, KeyStore
+from app.api.keys import ApiKey, KeyStore, bearer_token
+from app.api.mcp import KeyMiddleware, build_mcp, current_key
 from app.api.routes_admin import admin_router
 from app.api.routes_runs import runs_router
 from app.api.routes_sessions import sessions_router
@@ -19,11 +21,6 @@ UNAUTHORIZED = HTTPException(
     detail="a valid API key is required",
     headers={"WWW-Authenticate": "Bearer"},
 )
-
-
-def bearer_token(request: Request) -> str | None:
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
-    return token.strip() if scheme.lower() == "bearer" and token.strip() else None
 
 
 def build_auth(keys: KeyStore) -> Callable[[Request], ApiKey]:
@@ -66,10 +63,25 @@ def build_app(
     sse_poll_s: float = 1.0,
     sleep: Callable[[float], None] = time.sleep,
 ) -> FastAPI:
-    app = FastAPI(title="UltraDeepSearch", docs_url=None, redoc_url=None, openapi_url=None)
+    mcp = build_mcp(facade, current_key)
+    mcp_app = mcp.streamable_http_app(json_response=True, stateless_http=True)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        async with mcp.session_manager.run():  # a mounted app's own lifespan never runs
+            yield
+
+    app = FastAPI(
+        title="UltraDeepSearch",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
     for error_type in HANDLED:
         app.add_exception_handler(error_type, _domain_error)
     auth = build_auth(keys)
     for router in build_routers(facade, auth, sse_poll_s=sse_poll_s, sleep=sleep):
         app.include_router(router, dependencies=[Depends(auth)])
+    app.mount("/", KeyMiddleware(mcp_app, keys))  # `/mcp`; after the routes, so they win
     return app

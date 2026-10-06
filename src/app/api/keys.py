@@ -5,6 +5,8 @@ import secrets
 import sqlite3
 from dataclasses import dataclass
 
+from starlette.requests import Request
+
 from app.brief.errors import NotFound
 from app.store.db import Database
 
@@ -73,3 +75,9 @@ def _key(row: sqlite3.Row) -> ApiKey:
         created_at=row["created_at"],
         revoked_at=row["revoked_at"],
     )
+
+
+def bearer_token(request: Request) -> str | None:
+    """The key text of an `Authorization: Bearer <key>` header, if the header has that form."""
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" and token.strip() else None
