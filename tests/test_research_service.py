@@ -17,6 +17,7 @@ from research_run_rig import RAW_BRIEF, TEMPLATE, RunRig, make_rig
 
 from app.adapters.outbound.errors import DenylistBlocked
 from app.brief.errors import InvalidInput, NotFound, WrongState
+from app.events import read_run_events
 from app.llm.errors import LLMUnavailableError
 from app.research.errors import PlanBlocked, StalePlan, WorkerBusy
 from app.research.manifest import LIGHT_STEPS, done_steps
@@ -358,6 +359,19 @@ def test_the_events_tell_the_story_of_the_run(rig: RunRig) -> None:
     rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
     assert [e.data["status"] for e in rig.events.of_type("run_finished")] == ["done"]
     assert [e.data["run_id"] for e in rig.events.of_type("plan_approved")] == [run_id]
+
+
+def test_every_event_of_a_run_lands_in_its_own_file_with_the_run_id(rig: RunRig) -> None:
+    run_id = at_plan_gate(rig)
+    second = rig.create().run_id
+    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    events, cursor = read_run_events(rig.base / "runs" / run_id, 0)
+    types = [e["type"] for e in events]
+    assert "plan_approved" in types
+    assert "run_finished" in types
+    assert cursor == len(events)
+    assert {e["data"]["run_id"] for e in events} == {run_id}
+    assert read_run_events(rig.base / "runs" / second, 0) == ([], 0)  # not started: no file
 
 
 # ---- mutants of the steps and the service ---------------------------------------------------

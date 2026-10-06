@@ -25,7 +25,7 @@ from research_rig import (
 )
 
 from app.adapters.outbound.types import ScholarlyRecord, SearchHit
-from app.events import MemoryEventSink
+from app.events import EventSink, MemoryEventSink, RunScopedEventSink
 from app.graphs.research import ResearchRunner, build_research_graph
 from app.llm.structured import CHARS_PER_TOKEN
 from app.llm.types import Role
@@ -111,7 +111,8 @@ def make_rig(
     pandoc: FakePandoc | None = None,
 ) -> RunRig:
     """One 'process' over the files in ``base``; calling it again is a restart."""
-    events = MemoryEventSink()
+    memory = MemoryEventSink()
+    events = RunScopedEventSink(memory)
     models = models or ResearchModels()
     searcher = searcher or make_searcher()
     preparer = preparer or FakePreparer()
@@ -129,6 +130,7 @@ def make_rig(
             runs=runs,
             runner=runner,
             events=events,
+            bind=events.bound,
             contexts=context,
             templates=TEMPLATES,
             formats=FORMATS,
@@ -138,14 +140,14 @@ def make_rig(
         )
     )
     return RunRig(
-        base, service, runs, searches, models, searcher, preparer, pandoc, events, built, steps
+        base, service, runs, searches, models, searcher, preparer, pandoc, memory, built, steps
     )
 
 
 def _contexts(
     base: Path,
     runs: RunStore,
-    events: MemoryEventSink,
+    events: EventSink,
     built: dict[str, Built],
     searcher: FakeSearcher,
     preparer: FakePreparer,
@@ -181,7 +183,7 @@ def _contexts(
 
 def _step_deps(
     models: ResearchModels,
-    events: MemoryEventSink,
+    events: EventSink,
     runs: RunStore,
     searches: SearchStore,
     pandoc: FakePandoc,

@@ -8,6 +8,7 @@ end, `failed` if a step raised (the run continues from its last checkpoint when 
 
 import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -55,6 +56,10 @@ class RunView:
     error: str | None
 
 
+def _no_binding(run_id: str, run_dir: Path) -> AbstractContextManager[None]:
+    return nullcontext()
+
+
 @dataclass(frozen=True)
 class ServiceDeps:
     runs: RunStore
@@ -66,6 +71,8 @@ class ServiceDeps:
     data_dir: Path
     lock_path: Path
     now: Callable[[], datetime]
+    # While it runs, a run's events also go to its own file (`RunScopedEventSink.bound`).
+    bind: Callable[[str, Path], AbstractContextManager[None]] = _no_binding
 
 
 def _current_step(data: dict[str, Any]) -> str | None:
@@ -166,11 +173,12 @@ class ResearchService:
 
     def _guarded(self, run_id: str, work: Callable[[], None]) -> None:
         """Run ``work``; a step that raises makes the run `failed`, with its reason. A crash
-        signal (`BaseException`) is never swallowed."""
-        try:
-            work()
-        except Exception as exc:
-            self._fail(run_id, exc)
+        signal (`BaseException`) is never swallowed. The run's events go to its own file."""
+        with self._d.bind(run_id, self._d.contexts(run_id).run_dir):
+            try:
+                work()
+            except Exception as exc:
+                self._fail(run_id, exc)
 
     def _fail(self, run_id: str, exc: Exception) -> None:
         ctx = self._d.contexts(run_id)

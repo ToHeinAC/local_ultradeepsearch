@@ -16,7 +16,7 @@ from support import make_settings
 
 from app.adapters.outbound.gateway import PreparedQuery
 from app.adapters.outbound.types import ScholarlyRecord, SearchHit
-from app.events import MemoryEventSink
+from app.events import EventSink, MemoryEventSink
 from app.llm.fakes import CallbackTransport, reply
 from app.llm.roles import build_registry
 from app.llm.service import LLMService
@@ -334,7 +334,7 @@ class ResearchModels:
 
 def llm(
     models: ResearchModels,
-    events: MemoryEventSink | None = None,
+    events: EventSink | None = None,
     *,
     reason_num_ctx: int | None = None,
 ) -> LLMService:

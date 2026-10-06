@@ -40,7 +40,7 @@ from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
 from app.doctor import DoctorSnapshot
-from app.events import EventSink
+from app.events import EventSink, RunScopedEventSink
 from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph, open_checkpointer
 from app.graphs.research import ResearchRunner, build_research_graph
 from app.llm.roles import build_registry
@@ -94,7 +94,7 @@ class HostProbe(InstanceProbe, Protocol):
 @dataclass(frozen=True)
 class Runtime:
     settings: Settings
-    events: EventSink
+    events: RunScopedEventSink  # also writes a per-run file while a run is bound
     status: InstanceStatus
     urls: Mapping[Endpoint, str]
     registry: Mapping[Role, RoleSpec]
@@ -132,8 +132,9 @@ def build_runtime(
     stored = load_calibration(calibration_path(settings))
     registry = build_registry(settings, calibration_for(stored, settings))
     transport = transport or OllamaTransport()
-    service = LLMService(registry, urls, transport, events, timeout_s=settings.llm_timeout_s)
-    return Runtime(settings, events, status, urls, registry, transport, admin, probe, service)
+    scoped = RunScopedEventSink(events)
+    service = LLMService(registry, urls, transport, scoped, timeout_s=settings.llm_timeout_s)
+    return Runtime(settings, scoped, status, urls, registry, transport, admin, probe, service)
 
 
 def _own_loaded_vram(rt: Runtime) -> int:
@@ -462,6 +463,7 @@ def build_research_service(
             runs=runs,
             runner=ResearchRunner(graph),
             events=rt.events,
+            bind=rt.events.bound,
             contexts=context,
             templates=templates,
             formats=deps.formats,
