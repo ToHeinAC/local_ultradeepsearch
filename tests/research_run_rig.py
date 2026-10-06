@@ -28,12 +28,13 @@ from research_rig import (
 from app.adapters.outbound.types import ScholarlyRecord, SearchHit
 from app.events import EventSink, MemoryEventSink, RunScopedEventSink
 from app.graphs.research import ResearchRunner, build_research_graph
+from app.llm.service import LLMService
 from app.llm.structured import CHARS_PER_TOKEN
 from app.llm.types import Role
 from app.pipeline.strategies import load_strategies
 from app.research.report import ApprovedBrief
 from app.research.service import ResearchService, RunView, ServiceDeps
-from app.research.settings import resolve_run_settings
+from app.research.settings import llm_for_run, resolve_run_settings
 from app.research.steps import ResearchSteps, RunContext, StepDeps
 from app.store.db import Database
 from app.store.research import SearchStore
@@ -121,7 +122,8 @@ def make_rig(
     db = Database(base / "udr.sqlite", now=lambda: NOW)
     runs, searches = RunStore(db), SearchStore(db)
     built: dict[str, Built] = {}
-    context = _contexts(base, runs, events, built, searcher, preparer)
+    service = llm(models, events)
+    context = _contexts(base, runs, events, built, searcher, preparer, service)
     deps = _step_deps(models, events, runs, searches, pandoc)
     saver = SqliteSaver(sqlite3.connect(base / "checkpoints.sqlite", check_same_thread=False))
     steps = ResearchSteps(deps, context)
@@ -152,6 +154,7 @@ def _contexts(
     built: dict[str, Built],
     searcher: FakeSearcher,
     preparer: FakePreparer,
+    service: LLMService,
 ) -> Callable[[str], RunContext]:
     """The per-run objects, built on first use and kept: a run's searcher and pipeline persist
     across its steps, as in the real service."""
@@ -175,6 +178,7 @@ def _contexts(
                 preparer=preparer,
                 searcher=searcher,
                 ingestor=b.pipeline,
+                llm=llm_for_run(service, settings, REGISTRY[Role.SUMMARIZE].model, run_id, events),
                 reference_docx=None,
                 should_stop=lambda: runs.cancel_requested(run_id),
             )
@@ -192,7 +196,6 @@ def _step_deps(
 ) -> StepDeps:
     spec, summ = REGISTRY[Role.REASON], REGISTRY[Role.SUMMARIZE]
     return StepDeps(
-        service=llm(models, events),
         runs=runs,
         searches=searches,
         rules=RULES,

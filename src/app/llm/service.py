@@ -55,6 +55,22 @@ class LLMService:
             for role, spec in registry.items()
         }
 
+    def with_models(self, overrides: Mapping[Role, str]) -> "LLMService":
+        """A service like this one that uses other models for some roles (a run's own summarize
+        model). It shares the transport, URLs and events; it has its own concurrency limits."""
+        registry = {
+            role: replace(spec, model=overrides[role]) if role in overrides else spec
+            for role, spec in self._registry.items()
+        }
+        return LLMService(
+            registry,
+            self._urls,
+            self._transport,
+            self._events,
+            timeout_s=self._timeout_s,
+            sleep=self._sleep,
+        )
+
     def structured(
         self,
         role: Role,

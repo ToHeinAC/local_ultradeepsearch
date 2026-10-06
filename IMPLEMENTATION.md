@@ -111,9 +111,6 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
      German question. Tavily and the domain strategies were not in play.
   The prompts of steps 1 to 16 now ran on real output; their quality beyond this one run is
   unmeasured.
-- `udr run` does not apply a run's `summarize_model` choice; the `summarize` role uses the registry's
-  model for every run.
-- Run events go to `data/events.jsonl` with the model telemetry, not to a file per run.
 - PRD wording differs from the code in these places and needs the owner's approval to change:
   1. §3.1 and R6 say `UDR_OLLAMA_GPU`; the variable is `UDR_OWN_OLLAMA_GPU`.
   2. R6 says the doctor "warns about foreign processes"; it compares used VRAM with what our own

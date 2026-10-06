@@ -7,6 +7,9 @@ with the same defaults the brief was rendered with.
 
 from collections.abc import Mapping
 
+from app.events import EventSink
+from app.llm.service import LLMService
+from app.llm.types import Role
 from app.research.manifest import RunSettings
 from app.store.runs import RunRow
 from app.store.sessions import SessionRow
@@ -36,3 +39,15 @@ def resolve_run_settings(
         tier=run.tier,  # type: ignore[arg-type]  # validated by the model
         summarize_model=run.summarize_model,
     )
+
+
+def llm_for_run(
+    base: LLMService, settings: RunSettings, default_summarize: str, run_id: str, events: EventSink
+) -> LLMService:
+    """The model service of one run (PRD M6 D9): the run's `summarize_model` drives the
+    `summarize` and the `extract` role (R2). Another model than the configured one is a warning."""
+    model = settings.summarize_model
+    if model is None or model == default_summarize:
+        return base
+    events.emit("summarize_model_override", level="warning", run_id=run_id, model=model)
+    return base.with_models({Role.SUMMARIZE: model, Role.EXTRACT: model})

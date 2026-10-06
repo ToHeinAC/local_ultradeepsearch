@@ -43,6 +43,8 @@ from app.templates import ReportTemplate, TemplateError, get_template
 _M = TypeVar("_M", bound=BaseModel)  # CI runs 3.11: no PEP 695 generics
 Waiting = Literal["questions", "offer", "decision", "work", "nothing"]
 Tier = Literal["light", "full", "auto"]
+# Hands the graph call of a session to a job runner; the job returns a model error's text or None.
+Background = Callable[[str, Callable[[], str | None]], None]
 _WAITING_BY_PAYLOAD: dict[str, Waiting] = {
     "questions": "questions",
     "finished_prompt": "offer",
@@ -62,6 +64,10 @@ class ServiceDeps:
     formats: ResponseFormats
     drafts_dir: Path  # where `save` writes the draft of a parked session
     now: Callable[[], datetime]
+    # With a runner the graph calls return at once and a job does the work (API); without one
+    # they run in the caller (CLI).
+    background: Background | None = None
+    summarize_models: tuple[str, ...] = ()  # what `approve` accepts; empty means any
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,7 @@ class SessionView:
     archive_path: str | None
     draft_path: str | None  # the draft file of a parked session
     error: str | None
+    busy: bool = False  # a background job works on the session; poll until it is false
 
 
 def _validated(model: type[_M], value: object) -> _M:
@@ -132,12 +139,26 @@ class BriefService:
             raise NotFound(session_id)
         return row
 
-    def _run(self, action: Callable[[], None]) -> str | None:
+    def _run_now(self, action: Callable[[], None]) -> str | None:
         """Run graph work; a model error is reported, not raised, so the session stays usable."""
         try:
             action()
         except LLMError as exc:
             return f"{type(exc).__name__}: {exc}"
+        return None
+
+    def _run(self, session_id: str, action: Callable[[], None]) -> str | None:
+        """Graph work for the session, whose lock the caller holds. With a background runner a
+        job does it later, under the same lock, and the caller gets `None` at once."""
+        background = self._d.background
+        if background is None:
+            return self._run_now(action)
+
+        def job() -> str | None:
+            with self._lock(session_id):
+                return self._run_now(action)
+
+        background(session_id, job)
         return None
 
     def _payload(self, session_id: str, expected: str) -> dict[str, Any]:
@@ -210,7 +231,7 @@ class BriefService:
             raise
         with self._lock(session_id):
             error = self._run(
-                lambda: self._d.runner.start(initial_state(session_id, text, language))
+                session_id, lambda: self._d.runner.start(initial_state(session_id, text, language))
             )
         return self._view(session_id, error)
 
@@ -240,7 +261,9 @@ class BriefService:
                     f"expected {len(asked)} answer(s) for {len(asked)} question(s), "
                     f"got {len(reply.answers)}"
                 )
-            error = self._run(lambda: self._d.runner.resume(session_id, reply.model_dump()))
+            error = self._run(
+                session_id, lambda: self._d.runner.resume(session_id, reply.model_dump())
+            )
         return self._view(session_id, error)
 
     def choose_offer(self, session_id: str, *, strengthen: bool) -> SessionView:
@@ -253,13 +276,15 @@ class BriefService:
                     "strengthen it instead"
                 )
             reply = OfferReply(strengthen=strengthen)
-            error = self._run(lambda: self._d.runner.resume(session_id, reply.model_dump()))
+            error = self._run(
+                session_id, lambda: self._d.runner.resume(session_id, reply.model_dump())
+            )
         return self._view(session_id, error)
 
     # ---- the decision ---------------------------------------------------------------------
 
     def _decide(self, session_id: str, value: dict[str, Any]) -> SessionView:
-        error = self._run(lambda: self._d.runner.resume(session_id, value))
+        error = self._run(session_id, lambda: self._d.runner.resume(session_id, value))
         return self._view(session_id, error)
 
     def revise(self, session_id: str, feedback: str) -> SessionView:
@@ -326,6 +351,9 @@ class BriefService:
             raise InvalidInput(f"tier must be light, full or auto, got {tier!r}")
         if not _SHA256.fullmatch(sha256):
             raise InvalidInput("the hash must be 64 lowercase hex digits")
+        models = self._d.summarize_models
+        if summarize_model is not None and models and summarize_model not in models:
+            raise InvalidInput(f"summarize_model must be one of {', '.join(models)}")
         with self._lock(session_id):
             decision = self._payload(session_id, "decision")
             if self._row(session_id).brief_sha256 != sha256:
@@ -358,7 +386,7 @@ class BriefService:
             self._row(session_id)
             error = None
             if _waiting(self._d.runner.snapshot(session_id)) == "work":
-                error = self._run(lambda: self._d.runner.proceed(session_id))
+                error = self._run(session_id, lambda: self._d.runner.proceed(session_id))
         return self._view(session_id, error)
 
     def recover(self) -> list[str]:
@@ -376,6 +404,6 @@ class BriefService:
                     continue
                 self._d.ingestor.cleanup_orphans(row.session_id)
                 if _waiting(snapshot) == "work":
-                    self._run(lambda sid=row.session_id: self._d.runner.proceed(sid))
+                    self._run_now(lambda sid=row.session_id: self._d.runner.proceed(sid))
                     touched.append(row.session_id)
         return touched

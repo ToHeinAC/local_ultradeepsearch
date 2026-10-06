@@ -13,7 +13,7 @@ from support import make_pdf, make_settings
 
 from app.brief.interview import Interviewer
 from app.brief.protocol import AnswerInput
-from app.brief.service import BriefService, ServiceDeps
+from app.brief.service import Background, BriefService, ServiceDeps
 from app.brief.uploads import UploadFile, UploadIngestor
 from app.events import MemoryEventSink
 from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph
@@ -216,6 +216,8 @@ def rig(
     *,
     limits: Phase1Limits = LIMITS,
     now: datetime = NOW,
+    background: Background | None = None,
+    summarize_models: tuple[str, ...] = (),
 ) -> Rig:
     models = models or Models()
     parts = build_parts(tmp, models, limits)
@@ -229,6 +231,8 @@ def rig(
         formats=parts.deps.formats,
         drafts_dir=parts.deps.drafts_dir,
         now=lambda: now,
+        background=background,
+        summarize_models=summarize_models,
     )
     return Rig(BriefService(deps), parts, models, tmp)
 

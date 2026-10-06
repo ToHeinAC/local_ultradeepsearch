@@ -20,6 +20,8 @@ from app.llm.fakes import CallbackTransport
 from app.llm.types import ChatReply, ChatRequest
 from app.pipeline.profiles import Profile
 from app.research.service import ResearchService
+from app.store.db import Database
+from app.store.runs import RunStore
 
 NOW = datetime(2026, 10, 4, 9, 30, 15, tzinfo=UTC)
 
@@ -60,10 +62,12 @@ class AllModels(ResearchModels):
     def __init__(self) -> None:
         super().__init__()
         self.pipeline = FakeModels()
+        self.pipeline_models: dict[str, set[str]] = {}  # schema title -> models asked
 
     def __call__(self, request: ChatRequest) -> ChatReply | Exception:
         title = str(request.schema["title"]) if request.schema else ""
         if title in ("ChunkExtraction", "MergedSummary", "PartialAnalysis", "SourceAnalysis"):
+            self.pipeline_models.setdefault(title, set()).add(request.model)
             return self.pipeline(request)
         return super().__call__(request)
 
@@ -175,3 +179,24 @@ def test_the_worker_takes_a_queued_run_through_the_composition(tmp_path: Path) -
     assert worker.run_once() == run_id
     assert service.view(run_id).status == "awaiting_plan_approval"
     assert worker.run_once() is None
+
+
+def test_a_runs_own_summarize_model_reaches_the_fetch_pipelines_extraction(
+    tmp_path: Path,
+) -> None:
+    service, _gw, _models, rt = wired(tmp_path, pandoc=FakePandoc())
+    run_id = service.create_external_run(
+        RAW_BRIEF, tier="light", template_id=TEMPLATE, language="de"
+    ).run_id
+    runs = RunStore(Database(rt.settings.data_dir / bootstrap.VAULT_FILE))
+    row = runs.get_run(run_id)
+    assert row is not None
+    assert row.settings_json is not None
+    runs.set_settings(
+        run_id, json.dumps({**json.loads(row.settings_json), "summarize_model": "x:e2b"})
+    )
+    fresh, _gw, models, _rt = wired(tmp_path, pandoc=FakePandoc())  # the process that works it
+    fresh.run(run_id)
+    fresh.approve_and_run(run_id, str(fresh.view(run_id).plan_sha256))
+    assert isinstance(models, AllModels)
+    assert models.pipeline_models["ChunkExtraction"] == {"x:e2b"}

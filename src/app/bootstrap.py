@@ -35,7 +35,7 @@ from app.brief.archive import approved_at_of
 from app.brief.errors import NotFound
 from app.brief.interview import Interviewer
 from app.brief.parse import parse_brief
-from app.brief.service import BriefService, ServiceDeps
+from app.brief.service import Background, BriefService, ServiceDeps
 from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
@@ -65,7 +65,7 @@ from app.research.plan import QueryPreparer
 from app.research.report import ApprovedBrief
 from app.research.service import ResearchService
 from app.research.service import ServiceDeps as ResearchServiceDeps
-from app.research.settings import resolve_run_settings
+from app.research.settings import llm_for_run, resolve_run_settings
 from app.research.steps import ResearchSteps, RunContext, StepDeps
 from app.research.sweep import Searcher
 from app.store.db import Database
@@ -247,6 +247,7 @@ def build_pipeline(
     focus: Focus,
     confidential_context: str = "",
     fetcher: Fetcher | None = None,
+    service: LLMService | None = None,
 ) -> FetchPipeline:
     """The ingestion pipeline of one run. Call ``resume()`` before new work (PRD AD10).
 
@@ -266,8 +267,8 @@ def build_pipeline(
             credit_cap=profile.credit_cap,
             confidential_context=confidential_context,
         ),
-        extractor=NoteExtractor(rt.service, rt.events),
-        analyzer=SourceAnalyzer(rt.service, rt.events),
+        extractor=NoteExtractor(service or rt.service, rt.events),
+        analyzer=SourceAnalyzer(service or rt.service, rt.events),
         strategies=load_strategies(settings.config_dir),
         profile=profile,
         focus=focus,
@@ -285,10 +286,13 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -> BriefService:
+def build_brief_service(
+    rt: Runtime, *, now: Callable[[], datetime] = _utcnow, background: Background | None = None
+) -> BriefService:
     """The Phase-1 service on the runtime's models, ``data/udr.sqlite`` and the checkpointer in
     ``data/checkpoints.sqlite``. Call ``recover()`` once after a start to continue what a crash
-    left unfinished (PRD AD10). It never touches the outbound gateway."""
+    left unfinished (PRD AD10). It never touches the outbound gateway. With ``background`` the
+    model work of a session runs in that job runner (the API); without it, in the caller."""
     settings = rt.settings
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.data_dir / VAULT_FILE)
@@ -326,6 +330,8 @@ def build_brief_service(rt: Runtime, *, now: Callable[[], datetime] = _utcnow) -
             formats=formats,
             drafts_dir=drafts_dir,
             now=now,
+            background=background,
+            summarize_models=load_service_limits(settings.config_dir).summarize_models,
         )
     )
 
@@ -353,7 +359,6 @@ def _step_deps(
     settings = rt.settings
     reason, summarize = rt.registry[Role.REASON], rt.registry[Role.SUMMARIZE]
     return StepDeps(
-        service=rt.service,
         runs=runs,
         searches=searches,
         rules=load_run_rules(settings.config_dir),
@@ -385,12 +390,16 @@ def _build_run_context(
     directory = run_dir(settings, row.run_id)
     gateway = make_gateway(directory, text, load_profile(run_settings.tier, settings.config_dir))
     template = templates[run_settings.template_id]
+    llm = llm_for_run(
+        rt.service, run_settings, rt.registry[Role.SUMMARIZE].model, row.run_id, rt.events
+    )
     pipeline = build_pipeline(
         rt,
         row.run_id,
         tier=run_settings.tier,
         focus=Focus(parsed.title, parsed.research_questions),
         fetcher=gateway,
+        service=llm,
     )
     reference = (
         settings.data_dir / "templates" / template.reference_docx
@@ -407,6 +416,7 @@ def _build_run_context(
         preparer=gateway,
         searcher=gateway,
         ingestor=pipeline,
+        llm=llm,
         reference_docx=reference,
     )
 

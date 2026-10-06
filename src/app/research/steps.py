@@ -68,6 +68,7 @@ class RunContext:
     preparer: QueryPreparer  # the gateway's `prepare_query`
     searcher: Searcher
     ingestor: Ingestor
+    llm: LLMService  # the run's models: its own summarize model, if it chose one (PRD M6 D9)
     reference_docx: Path | None
     should_stop: Callable[[], bool] = never_stop  # true once the owner cancelled the run
 
@@ -76,7 +77,6 @@ class RunContext:
 class StepDeps:
     """What the steps share across runs."""
 
-    service: LLMService
     runs: RunStore
     searches: SearchStore
     rules: RunRules
@@ -119,7 +119,7 @@ class ResearchSteps:
         ctx = self._contexts(run_id)
 
         def work() -> None:
-            decomposer = Decomposer(self._d.service, self._d.rules, self._d.events)
+            decomposer = Decomposer(ctx.llm, self._d.rules, self._d.events)
             result = decomposer.decompose(
                 brief=ctx.brief.text, settings=ctx.settings, template=ctx.template
             )
@@ -136,7 +136,7 @@ class ResearchSteps:
 
         def work() -> None:
             planner = Planner(
-                self._d.service,
+                ctx.llm,
                 self._d.rules,
                 self._d.budgets[ctx.settings.tier],
                 ctx.preparer,
@@ -176,7 +176,7 @@ class ResearchSteps:
                     preparer=ctx.preparer,
                     ingestor=ctx.ingestor,
                     vault=ctx.vault,
-                    service=d.service,
+                    service=ctx.llm,
                     strategies=d.strategies,
                     budget=d.budgets[ctx.settings.tier],
                     rules=d.rules,
@@ -238,10 +238,10 @@ class ResearchSteps:
     def _writers(self, ctx: RunContext) -> tuple[EvidenceKeys, Drafter, ModelFixes]:
         d = self._d
         keys = EvidenceKeys(ctx.run_dir / KEYS_FILE)
-        packs = PackBuilder(ctx.vault, keys, d.service, d.rules, d.events)
+        packs = PackBuilder(ctx.vault, keys, ctx.llm, d.rules, d.events)
         sizes = {"prompt_chars": d.prompt_chars, "condense_chars": d.condense_chars}
-        drafter = Drafter(d.service, packs, keys, d.rules, d.events, **sizes)
-        return keys, drafter, ModelFixes(d.service, packs, keys, d.rules, d.events, **sizes)
+        drafter = Drafter(ctx.llm, packs, keys, d.rules, d.events, **sizes)
+        return keys, drafter, ModelFixes(ctx.llm, packs, keys, d.rules, d.events, **sizes)
 
     def _render(self, ctx: RunContext, plan: DraftPlan, keys: EvidenceKeys) -> None:
         write_report(
@@ -263,7 +263,7 @@ class ResearchSteps:
         def work() -> None:
             plan = self._draft_plan(ctx, self._must_read(ctx))
             shim = (ctx.run_dir / "shims" / "polish.md").read_text(encoding="utf-8")
-            Polisher(self._d.service, self._d.rules, self._d.events).polish_all(
+            Polisher(ctx.llm, self._d.rules, self._d.events).polish_all(
                 ctx.run_dir,
                 headings=[s.heading for s in plan.sections],
                 language=plan.language,
@@ -279,7 +279,7 @@ class ResearchSteps:
         def work() -> None:
             plan = self._draft_plan(ctx, self._must_read(ctx))
             auditor = ReadabilityAuditor(
-                self._d.service, self._d.rules, self._d.budgets[ctx.settings.tier], self._d.events
+                ctx.llm, self._d.rules, self._d.budgets[ctx.settings.tier], self._d.events
             )
             auditor.audit_all(ctx.run_dir, headings=[s.heading for s in plan.sections])
             self._render(ctx, plan, EvidenceKeys(ctx.run_dir / KEYS_FILE))
