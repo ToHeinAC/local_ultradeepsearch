@@ -13,6 +13,8 @@ import typer
 from app import bootstrap
 from app.adapters.ollama_instance import InstanceState
 from app.adapters.outbound.denylist import Denylist
+from app.api import server
+from app.api.keys import KeyStore
 from app.bootstrap import DENYLIST_FILE
 from app.brief.console import ConsoleIO, run_session
 from app.brief.errors import InvalidInput, NotFound, WrongState
@@ -26,6 +28,7 @@ from app.llm.types import Role
 from app.research.console import render_plan, run_plan_review
 from app.research.errors import EmptyPlan, PlanBlocked, StalePlan, WorkerBusy
 from app.research.service import ResearchService, RunView, TierNotAvailable
+from app.store.db import Database
 from app.worker import Worker
 
 app = typer.Typer(help="Local UltraDeep Researcher.", no_args_is_help=True, add_completion=False)
@@ -302,6 +305,57 @@ def worker_cmd() -> None:
         signal.signal(signum, _stop_on_signal(stop))
     typer.echo("Worker bereit.")
     worker.run_forever(stop)
+
+
+@app.command("serve")
+def serve_cmd() -> None:
+    """Startet die API (REST unter /v1, MCP unter /mcp) auf 127.0.0.1."""
+    settings = bootstrap.load_settings()
+    typer.echo(f"API auf http://127.0.0.1:{settings.api_port}")
+    server.serve(settings)
+
+
+apikey_app = typer.Typer(help="API-Schlüssel für REST und MCP.", no_args_is_help=True)
+app.add_typer(apikey_app, name="apikey")
+
+
+def _key_store() -> KeyStore:
+    settings = bootstrap.load_settings()
+    return KeyStore(Database(settings.data_dir / bootstrap.VAULT_FILE))
+
+
+@apikey_app.command("create")
+def apikey_create(
+    name: Annotated[str, typer.Option("--name", help="Wofür der Schlüssel dient.")],
+    self_approve: Annotated[
+        bool, typer.Option("--self-approve", help="Darf Briefs und Pläne freigeben.")
+    ] = False,
+) -> None:
+    """Legt einen Schlüssel an und zeigt ihn einmal."""
+    key, text = _key_store().create(name, self_approve=self_approve)
+    typer.echo(f"Schlüssel {key.key_id} ({name}):\n\n  {text}\n")
+    typer.echo("Er wird nicht noch einmal angezeigt; gespeichert wird nur sein Hash.")
+
+
+@apikey_app.command("list")
+def apikey_list() -> None:
+    """Zeigt Id, Name, Freigaberecht und Daten der Schlüssel, nie einen Schlüssel selbst."""
+    for key in _key_store().list():
+        right = "darf freigeben" if key.self_approve else "ohne Freigabe"
+        state = f"widerrufen {key.revoked_at}" if key.revoked_at else "aktiv"
+        typer.echo(f"{key.key_id}  {key.name}  {right}  angelegt {key.created_at}  {state}")
+
+
+@apikey_app.command("revoke")
+def apikey_revoke(
+    key_id: Annotated[str, typer.Argument(help="Die Id aus `udr apikey list`.")],
+) -> None:
+    """Widerruft einen Schlüssel; er wird danach mit 401 abgewiesen."""
+    try:
+        _key_store().revoke(key_id)
+    except NotFound as exc:
+        raise _fail(f"Unbekannter Schlüssel: {exc}", 1) from exc
+    typer.echo(f"Widerrufen: {key_id}")
 
 
 denylist_app = typer.Typer(help="Terms that must never leave this machine (PRD §3.2).")

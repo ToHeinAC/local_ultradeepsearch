@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     num_ctx_summarize: int = Field(default=16384, ge=1024)
     num_ctx_ocr: int = Field(default=8192, ge=1024)
 
+    api_port: int = Field(default=8541, ge=1, le=65535)  # `udr serve`; it binds to 127.0.0.1 only
+
     llm_timeout_s: float = Field(default=900.0, gt=0)
     min_free_disk_gb: float = Field(default=20.0, ge=0)
 

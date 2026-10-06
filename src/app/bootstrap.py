@@ -51,7 +51,9 @@ from app.pipeline.analysis import SourceAnalyzer
 from app.pipeline.extraction import Focus, NoteExtractor
 from app.pipeline.fetch import Fetcher, FetchPipeline
 from app.pipeline.profiles import (
+    Phase1Limits,
     Profile,
+    ResponseFormats,
     load_phase1,
     load_profile,
     load_research_budget,
@@ -286,8 +288,22 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _phase1_config(
+    settings: Settings, templates: dict[str, ReportTemplate] | None
+) -> tuple[Phase1Limits, ResponseFormats, dict[str, ReportTemplate]]:
+    return (
+        load_phase1(settings.config_dir),
+        load_response_formats(settings.config_dir),
+        templates or load_report_templates(settings),
+    )
+
+
 def build_brief_service(
-    rt: Runtime, *, now: Callable[[], datetime] = _utcnow, background: Background | None = None
+    rt: Runtime,
+    *,
+    now: Callable[[], datetime] = _utcnow,
+    background: Background | None = None,
+    templates: dict[str, ReportTemplate] | None = None,
 ) -> BriefService:
     """The Phase-1 service on the runtime's models, ``data/udr.sqlite`` and the checkpointer in
     ``data/checkpoints.sqlite``. Call ``recover()`` once after a start to continue what a crash
@@ -297,9 +313,7 @@ def build_brief_service(
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.data_dir / VAULT_FILE)
     sessions, runs = SessionStore(db), RunStore(db)
-    limits = load_phase1(settings.config_dir)
-    formats = load_response_formats(settings.config_dir)
-    templates = load_report_templates(settings)
+    limits, formats, templates = _phase1_config(settings, templates)
     briefs_dir = settings.data_dir / "briefs"
     drafts_dir = briefs_dir / "drafts"
     ingestor = UploadIngestor(
@@ -383,6 +397,7 @@ def _build_run_context(
     make_gateway: GatewayFactory,
 ) -> RunContext:
     settings = rt.settings
+    templates.update(load_report_templates(settings))  # an upload since this process started
     run_settings = resolve_run_settings(row, session, templates)
     archive = Path(str(row.brief_path))
     text = archive.read_text(encoding="utf-8")
@@ -451,6 +466,7 @@ def build_research_service(
     now: Callable[[], datetime] = _utcnow,
     gateway_factory: GatewayFactory | None = None,
     pandoc: PandocRunner | None = None,
+    templates: dict[str, ReportTemplate] | None = None,
 ) -> ResearchService:
     """The Phase-2 service on the runtime's models, ``data/udr.sqlite`` and the checkpointer in
     ``data/checkpoints.sqlite``. ``gateway_factory`` and ``pandoc`` replace the real outbound
@@ -459,7 +475,7 @@ def build_research_service(
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.data_dir / VAULT_FILE)
     runs, sessions, searches = RunStore(db), SessionStore(db), SearchStore(db)
-    templates = load_report_templates(settings)
+    templates = templates or load_report_templates(settings)
 
     def real_gateway(directory: Path, brief: str, profile: Profile) -> _RunGateway:
         return build_gateway(

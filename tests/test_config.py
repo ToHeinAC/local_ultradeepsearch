@@ -88,6 +88,8 @@ def test_rejects_non_loopback(url: str) -> None:
     [
         ("own_ollama_port", 0),
         ("own_ollama_port", 70000),
+        ("api_port", 0),
+        ("api_port", 70000),
         ("own_ollama_gpu", -1),
         ("own_ollama_startup_timeout_s", 0),
         ("llm_timeout_s", 0),
@@ -156,3 +158,7 @@ def test_conftest_scrubs_provider_secrets() -> None:
     import os
 
     assert not {"TAVILY_API_KEY", "OPENALEX_MAILTO", "OPENALEX_API_KEY"} & set(os.environ)
+
+
+def test_the_api_port_defaults_to_8541() -> None:
+    assert make().api_port == 8541
