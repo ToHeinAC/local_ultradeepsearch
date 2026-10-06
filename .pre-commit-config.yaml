@@ -41,7 +41,7 @@ repos:
         pass_filenames: false
       - id: pytest
         name: pytest (coverage >= 85%, suite <= 60 s)
-        entry: uv run pytest --cov -q
+        entry: uv run pytest --cov -q -n auto
         language: unsupported
         types: [python]
         pass_filenames: false
