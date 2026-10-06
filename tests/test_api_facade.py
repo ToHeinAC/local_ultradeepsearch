@@ -237,10 +237,9 @@ def test_a_bad_template_is_refused_and_nothing_is_kept(
 
 def test_the_denylist_is_read_and_replaced(api: ApiRig) -> None:
     assert api.facade.get_denylist(api.owner) == ()
-    assert (
-        api.facade.put_denylist(api.owner, ["Projekt Atlas", "Atlas"]) == ("Projekt Atlas",) or True
-    )
-    assert api.facade.get_denylist(api.owner)
+    written = api.facade.put_denylist(api.owner, ["Projekt Atlas", "Atlas"])
+    assert written == ("Projekt Atlas", "Atlas")
+    assert api.facade.get_denylist(api.owner) == written
     with pytest.raises(InvalidInput):
         api.facade.put_denylist(api.owner, ["!!!"])
 
