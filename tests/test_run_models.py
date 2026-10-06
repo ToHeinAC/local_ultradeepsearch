@@ -3,10 +3,14 @@
 import json
 from pathlib import Path
 
-from research_rig import REGISTRY
+import pytest
+from research_rig import REGISTRY, ResearchModels, llm
 from research_run_rig import RunRig, make_rig
 
+from app.events import MemoryEventSink
 from app.llm.types import Role
+from app.research.manifest import RunSettings
+from app.research.settings import llm_for_run
 
 
 def run_with_model(base: Path, model: str | None) -> tuple[RunRig, str]:
@@ -39,12 +43,23 @@ def test_a_run_with_its_own_summarize_model_sends_it_for_summarize_calls_only(
     ]
 
 
-def test_a_run_without_a_choice_or_with_the_configured_model_uses_the_registry(
-    tmp_path: Path,
+def settings_of(model: str | None) -> RunSettings:
+    return RunSettings(
+        report_language="de",
+        response_format="short",
+        template_id="auto",
+        interview_language="de",
+        tier="light",
+        summarize_model=model,
+    )
+
+
+@pytest.mark.parametrize("model", [None, REGISTRY[Role.SUMMARIZE].model])
+def test_no_choice_or_the_configured_model_keeps_the_service_and_says_nothing(
+    model: str | None,
 ) -> None:
-    r, _run_id = run_with_model(tmp_path / "a", None)
-    other, _other_id = run_with_model(tmp_path / "b", REGISTRY[Role.SUMMARIZE].model)
-    r.models.models_used["ReadabilityProposal"] |= other.models.models_used["ReadabilityProposal"]
-    r.events.events.extend(other.events.events)
-    assert r.models.models_used["ReadabilityProposal"] == {REGISTRY[Role.SUMMARIZE].model}
-    assert r.events.of_type("summarize_model_override") == []
+    events = MemoryEventSink()
+    base = llm(ResearchModels(), events)
+    chosen = llm_for_run(base, settings_of(model), REGISTRY[Role.SUMMARIZE].model, "r-1", events)
+    assert chosen is base
+    assert events.events == []

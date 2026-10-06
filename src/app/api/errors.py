@@ -33,3 +33,6 @@ def to_http(exc: Exception) -> tuple[int, dict[str, Any]] | None:
         if isinstance(exc, types):
             return status, {"detail": str(exc), "status": getattr(exc, "status", None)}
     return None
+
+
+HANDLED: tuple[type[Exception], ...] = tuple(t for types, _ in _STATUS for t in types)

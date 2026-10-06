@@ -6,6 +6,8 @@ from pathlib import Path
 
 from brief_rig import Rig as BriefRig
 from brief_rig import rig as brief_rig
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from research_rig import TEMPLATES
 from research_run_rig import RunRig, make_rig
 from support import make_settings
@@ -13,6 +15,7 @@ from support import make_settings
 from app.api.facade import Facade
 from app.api.jobs import SessionJobs
 from app.api.keys import ApiKey, KeyStore
+from app.api.rest import build_app
 from app.store.db import Database
 from app.templates import ReportTemplate
 
@@ -30,6 +33,13 @@ class ApiRig:
     owner_text: str
     agent: ApiKey  # may not approve
     agent_text: str
+    app: FastAPI
+
+    def client(self, key_text: str | None = None) -> TestClient:
+        """A client that sends ``key_text`` as its bearer key (the owner's by default)."""
+        client = TestClient(self.app)
+        client.headers["Authorization"] = f"Bearer {key_text or self.owner_text}"
+        return client
 
 
 def make_api_rig(base: Path) -> ApiRig:
@@ -57,4 +67,5 @@ def make_api_rig(base: Path) -> ApiRig:
         owner_text,
         agent,
         agent_text,
+        build_app(facade, keys, sse_poll_s=0.0, sleep=lambda _s: None),
     )

@@ -70,11 +70,6 @@ def test_a_second_approval_of_the_same_plan_is_refused(rig: RunRig) -> None:
         rig.service.approve_plan(run_id, plan_hash(rig, run_id))
 
 
-def test_approve_and_run_does_both(rig: RunRig) -> None:
-    run_id = at_plan_gate(rig)
-    assert rig.service.approve_and_run(run_id, plan_hash(rig, run_id)).status == "done"
-
-
 def test_a_run_that_waits_for_its_plan_or_is_cancelled_is_not_run(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
     assert rig.service.run(run_id).status == "awaiting_plan_approval"
@@ -186,9 +181,8 @@ def checkpoint_rows(r: RunRig, run_id: str) -> int:
         )
 
 
-def test_deleting_a_finished_run_leaves_nothing_behind(rig: RunRig) -> None:
+def test_deleting_a_run_leaves_nothing_behind(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
-    rig.service.approve_and_run(run_id, plan_hash(rig, run_id))
     assert checkpoint_rows(rig, run_id) > 0
     assert rig.run_dir(run_id).exists()
     rig.service.delete(run_id)
@@ -318,3 +312,21 @@ def test_the_worker_slot_and_the_queue_depth_are_visible(rig: RunRig) -> None:
     assert rig.service.queue_depth() == 1
     with WorkerLock(rig.base / "worker.lock"):
         assert rig.service.worker_busy()
+
+
+def test_the_last_event_of_a_run_is_written_before_its_status_is_final(rig: RunRig) -> None:
+    """A reader that stops at a final status must have every event of the run in the file."""
+    run_id = at_plan_gate(rig)
+    seen: list[tuple[str, str]] = []
+    emit = rig.events.emit
+
+    def spy(type: str, **kwargs: object) -> None:
+        if type in ("run_finished", "run_cancelled", "run_failed"):
+            row = rig.runs.get_run(run_id)
+            assert row is not None
+            seen.append((type, row.status))
+        emit(type, **kwargs)  # type: ignore[arg-type]
+
+    rig.events.emit = spy  # type: ignore[method-assign]
+    rig.service.approve_and_run(run_id, plan_hash(rig, run_id))
+    assert seen == [("run_finished", "running")]

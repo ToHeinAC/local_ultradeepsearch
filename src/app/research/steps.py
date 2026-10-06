@@ -325,8 +325,9 @@ class ResearchSteps:
         self._step(ctx, "X", work)
         gate = json.loads((ctx.run_dir / "run.json").read_text(encoding="utf-8"))["gate"]
         status = "done" if gate["passed"] else "blocked"
-        self._d.runs.set_status(run_id, status)
+        # The event first: whoever stops reading at a final status has seen every event.
         self._d.events.emit("run_finished", run_id=run_id, status=status)
+        self._d.runs.set_status(run_id, status)
 
     def _decomposition(self, ctx: RunContext) -> Decomposition:
         text = (ctx.run_dir / "prompt-decomposition.json").read_text(encoding="utf-8")

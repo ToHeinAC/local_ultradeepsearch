@@ -219,17 +219,17 @@ class ResearchService:
 
     def _cancelled(self, run_id: str) -> None:
         step = _current_step(read_run_json(self._d.contexts(run_id).run_dir))
+        self._d.events.emit("run_cancelled", run_id=run_id, step=step)  # before the final status
         self._d.runs.set_status(run_id, "cancelled")
         self._d.runs.clear_cancel(run_id)
-        self._d.events.emit("run_cancelled", run_id=run_id, step=step)
 
     def _fail(self, run_id: str, exc: Exception) -> None:
         ctx = self._d.contexts(run_id)
         step = _current_step(read_run_json(ctx.run_dir)) or "?"
         reason = f"{type(exc).__name__}: {exc}"
         record_failure(ctx.run_dir, step, reason, self._d.now())
-        self._d.runs.set_status(run_id, "failed")
         self._d.events.emit("run_failed", level="error", run_id=run_id, step=step, reason=reason)
+        self._d.runs.set_status(run_id, "failed")
 
     # ---- the search plan ------------------------------------------------------------------
 
