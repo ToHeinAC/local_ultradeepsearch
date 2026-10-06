@@ -39,6 +39,7 @@ from app.research.steps import ResearchSteps, RunContext, StepDeps
 from app.store.db import Database
 from app.store.research import SearchStore
 from app.store.runs import RunStore
+from app.templates import ReportTemplate
 
 NOW = datetime(2026, 10, 3, 9, 0, 0, tzinfo=UTC)
 RAW_BRIEF = (
@@ -111,6 +112,7 @@ def make_rig(
     searcher: FakeSearcher | None = None,
     preparer: FakePreparer | None = None,
     pandoc: FakePandoc | None = None,
+    templates: dict[str, ReportTemplate] | None = None,
 ) -> RunRig:
     """One 'process' over the files in ``base``; calling it again is a restart."""
     memory = MemoryEventSink()
@@ -123,7 +125,8 @@ def make_rig(
     runs, searches = RunStore(db), SearchStore(db)
     built: dict[str, Built] = {}
     service = llm(models, events)
-    context = _contexts(base, runs, events, built, searcher, preparer, service)
+    chosen = templates if templates is not None else TEMPLATES
+    context = _contexts(base, runs, events, built, searcher, preparer, service, chosen)
     deps = _step_deps(models, events, runs, searches, pandoc)
     saver = SqliteSaver(sqlite3.connect(base / "checkpoints.sqlite", check_same_thread=False))
     steps = ResearchSteps(deps, context)
@@ -135,7 +138,7 @@ def make_rig(
             events=events,
             bind=events.bound,
             contexts=context,
-            templates=TEMPLATES,
+            templates=chosen,
             formats=FORMATS,
             data_dir=base,
             lock_path=base / "worker.lock",
@@ -155,6 +158,7 @@ def _contexts(
     searcher: FakeSearcher,
     preparer: FakePreparer,
     service: LLMService,
+    templates: dict[str, ReportTemplate],
 ) -> Callable[[str], RunContext]:
     """The per-run objects, built on first use and kept: a run's searcher and pipeline persist
     across its steps, as in the real service."""
@@ -165,7 +169,7 @@ def _contexts(
             row = runs.get_run(run_id)
             assert row is not None
             b = built.setdefault(run_id, build(base, served(), events=events, run_id=run_id))
-            settings = resolve_run_settings(row, None, TEMPLATES)
+            settings = resolve_run_settings(row, None, templates)
             text = Path(str(row.brief_path)).read_text(encoding="utf-8")
             brief = ApprovedBrief(text, NOW, f"briefs/{Path(str(row.brief_path)).name}")
             contexts[run_id] = RunContext(
@@ -173,7 +177,7 @@ def _contexts(
                 run_dir=base / "runs" / run_id,
                 settings=settings,
                 brief=brief,
-                template=TEMPLATES[settings.template_id],
+                template=templates[settings.template_id],
                 vault=b.vault,
                 preparer=preparer,
                 searcher=searcher,

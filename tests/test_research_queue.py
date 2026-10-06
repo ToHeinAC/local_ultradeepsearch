@@ -14,6 +14,7 @@ from app.brief.errors import InvalidInput, NotFound, StaleBrief, WrongState
 from app.research.errors import ReportNotReady
 from app.research.manifest import LIGHT_STEPS, done_steps, read_run_json
 from app.research.sections import load_section
+from app.research.worker import WorkerLock
 
 
 @pytest.fixture
@@ -281,3 +282,39 @@ def test_tier_auto_becomes_light_and_says_so(rig: RunRig) -> None:
     view = rig.create(tier="auto")
     assert view.tier == "light"
     assert [e.data["run_id"] for e in rig.events.of_type("tier_auto_resolved")] == [view.run_id]
+
+
+# ---- what the API shows (M6) --------------------------------------------------------------
+
+
+def test_the_gate_report_exists_once_the_gate_has_run(rig: RunRig) -> None:
+    run_id = at_plan_gate(rig)
+    with pytest.raises(NotFound):
+        rig.service.gate_report(run_id)
+    rig.service.approve_and_run(run_id, plan_hash(rig, run_id))
+    report = rig.service.gate_report(run_id)
+    assert report["passed"] is True
+    assert report["rounds"] == []
+    assert [c["id"] for c in report["checks"]][:2] == ["G1", "G2"]
+
+
+def test_the_outbound_log_is_read_line_by_line_and_may_be_empty(rig: RunRig) -> None:
+    run_id = rig.create().run_id
+    assert rig.service.outbound_log(run_id) == []
+    rig.run_dir(run_id).mkdir(parents=True, exist_ok=True)
+    (rig.run_dir(run_id) / "outbound.jsonl").write_text(
+        '{"step": "2", "credits": 1}\n{"step": "2"}\n'
+    )
+    assert [r["step"] for r in rig.service.outbound_log(run_id)] == ["2", "2"]
+    with pytest.raises(NotFound):
+        rig.service.outbound_log("r-nope")
+
+
+def test_the_worker_slot_and_the_queue_depth_are_visible(rig: RunRig) -> None:
+    assert not rig.service.worker_busy()
+    assert rig.service.queue_depth() == 0
+    rig.create()
+    rig.create(approved=False)  # waits for its brief: not queued work
+    assert rig.service.queue_depth() == 1
+    with WorkerLock(rig.base / "worker.lock"):
+        assert rig.service.worker_busy()

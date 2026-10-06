@@ -23,7 +23,7 @@ from app.brief.render import BriefContext, brief_sha256, render_external
 from app.events import EventSink
 from app.graphs.research import ResearchRunner
 from app.pipeline.profiles import ResponseFormats
-from app.research.errors import ReportNotReady, ResearchError, RunCancelled
+from app.research.errors import ReportNotReady, ResearchError, RunCancelled, WorkerBusy
 from app.research.manifest import read_run_json, record_failure
 from app.research.models import Decomposition, SearchPlan, atomic_items
 from app.research.plan import PLAN_FILE, check_approvable, load_plan, plan_hash, save_plan
@@ -313,6 +313,35 @@ class ResearchService:
         if not path.exists():
             raise NotFound(f"the run has no {fmt} report")
         return path
+
+    def gate_report(self, run_id: str) -> dict[str, Any]:
+        """`gate.json`: every check and every fix round. `NotFound` before the gate has run."""
+        self._row(run_id)
+        path = self._d.contexts(run_id).run_dir / "gate.json"
+        if not path.exists():
+            raise NotFound("the run has no gate report yet")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def outbound_log(self, run_id: str) -> list[dict[str, Any]]:
+        """What the run sent over the internet: the lines of `outbound.jsonl`."""
+        self._row(run_id)
+        path = self._d.contexts(run_id).run_dir / "outbound.jsonl"
+        if not path.exists():
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()
+        return [json.loads(line) for line in lines if line.strip()]
+
+    def worker_busy(self) -> bool:
+        """Whether some process holds the worker slot right now."""
+        try:
+            with WorkerLock(self._d.lock_path):
+                return False
+        except WorkerBusy:
+            return True
+
+    def queue_depth(self) -> int:
+        """Runs that wait for the worker (`queued`)."""
+        return sum(1 for row in self._d.runs.list_runs(limit=10_000) if row.status == "queued")
 
     def view(self, run_id: str) -> RunView:
         row = self._row(run_id)

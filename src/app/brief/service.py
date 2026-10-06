@@ -283,8 +283,11 @@ class BriefService:
 
     # ---- the decision ---------------------------------------------------------------------
 
-    def _decide(self, session_id: str, value: dict[str, Any]) -> SessionView:
-        error = self._run(session_id, lambda: self._d.runner.resume(session_id, value))
+    def _decide(self, session_id: str, value: dict[str, Any], *, wait: bool = False) -> SessionView:
+        """Answer the decision. ``wait`` runs it in the caller even with a background runner: the
+        approval needs no model and its caller wants the run id back."""
+        action = lambda: self._d.runner.resume(session_id, value)  # noqa: E731
+        error = self._run_now(action) if wait else self._run(session_id, action)
         return self._view(session_id, error)
 
     def revise(self, session_id: str, feedback: str) -> SessionView:
@@ -366,7 +369,7 @@ class BriefService:
                 summarize_model=summarize_model,
                 at=self._d.now(),
             )
-            return self._decide(session_id, approval.model_dump(mode="json"))
+            return self._decide(session_id, approval.model_dump(mode="json"), wait=True)
 
     # ---- reading and continuing -----------------------------------------------------------
 

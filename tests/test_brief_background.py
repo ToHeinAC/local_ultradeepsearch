@@ -86,6 +86,20 @@ def test_retry_in_background_mode_is_a_job_too(tmp_path: Path, queue: Queue) -> 
     assert r.service.get(sid).waiting_for == "decision"  # the second assessment is the last one
 
 
+def test_the_approval_is_never_a_job_so_the_caller_gets_the_run_at_once(
+    r: Rig, queue: Queue
+) -> None:
+    sid = r.service.start(QUESTION).session_id
+    queue.run_all()
+    r.service.answer(sid, kinds("accept", "accept"))
+    queue.run_all()
+    view = r.service.get(sid)
+    assert view.brief_sha256 is not None
+    approved = r.service.approve(sid, view.brief_sha256, "light")
+    assert approved.run_id is not None
+    assert queue.jobs == []
+
+
 def test_a_summarize_model_outside_the_configured_ones_is_refused(tmp_path: Path) -> None:
     r = rig(tmp_path, summarize_models=("gemma4:e4b", "gemma4:e2b"))
     sid = r.service.start(QUESTION).session_id
