@@ -368,7 +368,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 - **REST:** `127.0.0.1:8541/v1`, bearer API key (M6).
 - **MCP:** streamable HTTP at `127.0.0.1:8541/mcp`, same keys (M6).
 - **GUI:** Streamlit at `127.0.0.1:8540`, German (M7).
-- **CLI `udr`:** `doctor`, `brief`, `run`, `apikey`, `denylist`, `backup`.
+- **CLI `udr`:** `doctor`, `brief`, `run`, `serve`, `worker`, `apikey`, `denylist`, `backup`.
 
 ## 4. Milestones
 
@@ -580,13 +580,13 @@ the report and exports stay downloadable, marked "nicht bestanden".
 
 ### M6 — Service: REST, MCP and worker
 - **Deliverable:**
-  - FastAPI on `127.0.0.1:8541`, with a service layer shared by REST and MCP.
-  - `udr apikey create --name <n> [--self-approve]` prints the key once and stores only its
-    sha256.
-  - **Worker:**
+  - `udr serve`: FastAPI on `127.0.0.1:8541`, one service layer for REST and MCP; Phase-1 calls
+    return 202 (poll `GET /sessions/{id}`). `udr apikey create --name <n> [--self-approve]` shows the key once.
+  - **Worker** (`udr worker`, own process; the API never runs a graph):
     - one active run at a time, FIFO queue; runs awaiting approval do not hold the slot;
-    - runs left `running` auto-resume at startup;
-    - cancel takes effect at the next node boundary.
+    - runs left `running` auto-resume at startup; events also go to `data/runs/<id>/events.jsonl`;
+    - cancel works at node boundaries, sweep queries and draft sections; new statuses
+      `awaiting_brief_approval`, `cancelled`; route `POST /runs/{id}/approve`.
   - **REST endpoints** (`/v1`):
 
     | Group | Endpoints |
@@ -759,7 +759,7 @@ the report and exports stay downloadable, marked "nicht bestanden".
 | # | Risk | Mitigation | Revisit when |
 |---|---|---|---|
 | R1 | Local 27B is far below Opus in drafting and critique | AD1–AD5 put the structure in code; ship gate; section-wise generation | Reference runs stay `blocked` after 3 fix rounds |
-| R2 | The `extract` model produces weak or unfaithful claims | Verbatim quote check; drop counter | `claims_drop_rate` > 30 % → switch `extract` to the `summarize` model. Triggered 2026-10-05: LFM-1.2B measured 0.75, so `extract` now uses the `summarize` model on the shared daemon (a gemma4 model next to `reason` on the own GPU evicts `reason`) |
+| R2 | The `extract` model produces weak or unfaithful claims | Verbatim quote check; drop counter | `claims_drop_rate` > 30 % → switch `extract` to the `summarize` model. Triggered 2026-10-05: LFM-1.2B measured 0.75, so `extract` now uses the `summarize` model (a run's `summarize_model` drives both) on the shared daemon (a gemma4 model next to `reason` on the own GPU evicts `reason`) |
 | R3 | Sanitizer misses a confidential term | Denylist (hard), plan review, outbound log | Any confidential term appears in `outbound.jsonl` |
 | R4 | DuckDuckGo blocks the unofficial API | Backoff; gaps documented; run continues | > 20 % of fallback queries fail |
 | R5 | Tavily free plan (1000/month) covers only ~3 Full runs | Local-first fetch; per-run cap; automatic ddgs switch | Limit reached before day 20, twice |
