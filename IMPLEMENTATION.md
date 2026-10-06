@@ -9,12 +9,13 @@ Rules: [AGENTS.md](AGENTS.md). Design: [docs/architecture.md](docs/architecture.
 |---|---|
 | Install (once per clone) | `uv sync && uv run pre-commit install` |
 | Tests (fast loop) | `uv run pytest` or `uv run pytest tests/test_service.py` |
-| Full gate | `uv run pre-commit run --all-files` |
+| Full gate (tests run in parallel, `pytest --cov -n auto`) | `uv run pre-commit run --all-files` |
 | Live tests (real Ollama and services, not in the gate) | `uv run pytest -m live` (outbound only: `uv run pytest -m live tests/live/test_live_outbound.py`) |
 | Machine check | `uv run udr doctor` (`--json`; `--calibrate` measures the reason context) |
 | Denylist | `uv run udr denylist add <term>...`, `remove <term>...`, `list` |
 | Phase 1: clarify and approve a brief | `uv run udr brief "<question>" [--file F]...`, `--list`, `--session <id>` (see [docs/brief.md](docs/brief.md)) |
 | Phase 2: start or continue a run, review its plan | `uv run udr run <run_id> [--approve-plan <sha> \| --no-input]`, `uv run udr run --brief F --tier light --template ID` (see [docs/research.md](docs/research.md)) |
+| Service: API, worker, keys | `uv run udr serve`, `uv run udr worker`, `uv run udr apikey create --name N [--self-approve]`, `list`, `revoke ID` (see [docs/api.md](docs/api.md)) |
 | Ingest sources of a run (library call; the CLI and graphs arrive later) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
 
 ## 2. Phase status
@@ -29,7 +30,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 3 | M3: Per-run source vault and fetch pipeline ([plan](docs/plans/m3-source-vault.md)) | done | AC1–AC6 offline: `test_fetch_pipeline.py` (20-URL corpus, in-process crashes, real SIGKILL), `test_store.py`, `test_extraction.py`, `test_dedup.py`, `test_scoring.py`; 809 offline tests. Live: `test_live_vault.py` ran, drop rate 0.75 (above R2), see §4 |
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. live: `tests/live/test_live_brief.py` ran, see §4 |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | done | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); live AC8: a German Lite run passed the gate in 52 min, see §4 |
-| 6 | M6: Service — REST, MCP, worker ([plan](docs/plans/m6-service.md)) | in progress | route auth table, crash-resume, in-process MCP tests |
+| 6 | M6: Service — REST, MCP, worker ([plan](docs/plans/m6-service.md)) | in progress | offline: steps 0-10 done, AC1–AC7 in `test_api_auth.py`, `test_api_rest.py`, `test_worker.py`, `test_worker_crash.py` (real SIGKILL), `test_api_mcp.py`, `test_api_openapi.py`; live check (step 12) open |
 | 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
 | 9 | M9: Full tier — drafting and review, calibration | planned | full step-sequence, patch-engine tests; live Full run |
@@ -42,14 +43,16 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/config.py` | `Settings` (`UDR_*` env, `.env`) and `is_loopback_url`. Ollama URLs must be loopback. |
 | `src/app/llm/` | Role registry, typed requests, the `LLMService`, structured-output helpers, errors, `ScriptedTransport` fake. See [docs/llm-layer.md](docs/llm-layer.md). |
 | `src/app/prompts/` | Prompt strings as named constants: `llm.py` (repair, calibration probe), `outbound.py` (sanitizer), `untrusted.py` (fencing of fetched and uploaded text), `notes.py` (extraction, summary merge, source analysis), `brief.py` (interview, drafting, tier, uploads). A test forbids digits outside placeholders. |
-| `src/app/events.py` | `EventSink` protocol, thread-safe `JsonlEventSink`, `MemoryEventSink`. |
+| `src/app/events.py` | `EventSink` protocol, thread-safe `JsonlEventSink`, `MemoryEventSink`, `RunScopedEventSink` (also writes `data/runs/<id>/events.jsonl` while a run executes), `read_run_events`. |
 | `src/app/artifacts.py` | Atomic, thread-safe `write_text`/`write_json` that strip `<think>`; `scrub=False` for byte-exact files. |
 | `src/app/telemetry.py` | Forces LangSmith tracing off; `app.graphs` calls it before LangGraph loads. |
 | `src/app/text.py` | `normalize_for_match` and the verbatim-quote check `contains_quote` (also used by the ship gate later). |
 | `src/app/calibration.py` | Measures the largest `reason` context that fits VRAM; `calibration.json` I/O. |
 | `src/app/doctor.py` | Pure checks over a `DoctorSnapshot`; exit code and rendering. |
 | `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`; `build_brief_service` and `build_research_service` (the per-run context, the step dependencies from the model registry, the worker lock). |
-| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`). Entry point `udr = app.cli:main`. |
+| `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`, `serve`, `worker`, `apikey`). Entry point `udr = app.cli:main`. |
+| `src/app/worker.py` | `Worker`: the queue loop over the `runs` table (orphans first, then FIFO). |
+| `src/app/api/` | `facade.py` (service layer for REST and MCP), `rest.py` and `routes_*.py`, `mcp.py`, `keys.py`, `jobs.py` (Phase-1 thread pool), `errors.py`, `schemas.py`, `server.py`. The only code that imports fastapi, starlette, uvicorn or mcp. See [docs/api.md](docs/api.md). |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
 | `src/app/adapters/system_probe.py` | `nvidia-smi`, free disk, binary lookup, model-store discovery. |
@@ -65,7 +68,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `config/` | `profiles.toml` (per-tier budgets) and `source_strategies.toml` (tier weights, host rules, domain sections). |
 | `tests/research_rig.py`, `tests/research_run_rig.py`, `tests/research_crash_child.py` | The Phase-2 fakes (gateway pieces, scripted models, pandoc), a whole Lite run on them, and the child process the Phase-2 SIGKILL tests kill. |
 | `tests/brief_rig.py`, `tests/brief_crash_child.py` | The scripted model and the wired Phase-1 session; the child process the Phase-1 SIGKILL test kills. |
-| `tests/test_layer_rules.py` | Enforces that LangGraph is imported only in `src/app/graphs/`. |
+| `tests/test_layer_rules.py` | Enforces that LangGraph is imported only in `src/app/graphs/` and the web stack only in `src/app/api/`. |
+| `tests/api_rig.py` | A `Facade` and app over the Phase-1 and Phase-2 rigs, with an owner key and a key that may not approve. |
 | `tests/support.py` | `make_settings()` (`Settings` that ignore any developer `.env`), `make_pdf()` (synthetic PDFs) and `make_note()`. |
 | `tests/fixtures_corpus.py`, `tests/crash_child.py` | The 20-URL corpus, fake fetcher and fake model; the child process the SIGKILL test kills. |
 | `tests/conftest.py` | Autouse fixtures: block sockets (except `live` tests), scrub `UDR_*` env. |

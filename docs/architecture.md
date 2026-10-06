@@ -13,7 +13,7 @@
 Boundaries for later milestones are in [AGENTS.md](../AGENTS.md) §5.2: prompts in `app/prompts/`,
 LangGraph only in `app/graphs/`, the GUI only through the API client. Module details:
 [llm-layer.md](llm-layer.md), [ollama-runtime.md](ollama-runtime.md), [outbound.md](outbound.md),
-[vault.md](vault.md), [brief.md](brief.md), [research.md](research.md).
+[vault.md](vault.md), [brief.md](brief.md), [research.md](research.md), [api.md](api.md).
 
 ## Quality gate flow
 
@@ -51,6 +51,9 @@ The gate itself is defined once, in `.pre-commit-config.yaml`. The Stop hook and
   wire ([research.md](research.md)).
 - **One research run at a time, by a lock the OS releases.** The worker slot is a lock file held
   only while a graph executes, so a killed run never blocks the next one.
+- **The API never runs a research graph.** `udr serve` writes intent (approved, cancelled) into the
+  `runs` table; `udr worker` is the queue and executes. A run left `running` is resumed first
+  ([api.md](api.md)).
 - **Confidentiality fails closed, availability fails open.** A sanitizer error blocks the query.
   An exhausted or invalid Tavily account switches the run to ddgs instead of failing it.
 - **Fail open, say so.** If our own Ollama instance cannot start, both endpoints use the shared

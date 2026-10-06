@@ -41,6 +41,9 @@ uv run udr doctor --calibrate          # checks the machine, measures the reason
 uv run udr denylist add "Client GmbH"  # terms that must never leave this machine
 uv run udr brief "Meine Frage" -f a.pdf # Phase 1: clarify the question, approve the brief
 uv run udr run <run_id>                # Phase 2: plan, approve the queries, report
+uv run udr apikey create --name me --self-approve  # key for REST and MCP
+uv run udr serve                       # API on 127.0.0.1:8541 (REST /v1, MCP /mcp)
+uv run udr worker                      # executes the queued runs
 uv run pytest                          # offline tests
 uv run pytest -m live                  # tests against the real models
 ```
@@ -48,6 +51,8 @@ uv run pytest -m live                  # tests against the real models
 `udr doctor` starts a second Ollama on `127.0.0.1:11436`, pinned to one GPU, if none is running
 there. How that works, the settings and how to stop it:
 [docs/ollama-runtime.md](docs/ollama-runtime.md).
+
+The API, the keys and the worker: [docs/api.md](docs/api.md).
 
 Web search uses Tavily if `TAVILY_API_KEY` is in `.env`, otherwise DuckDuckGo. Everything that goes
 out is checked against the denylist and logged; see [docs/outbound.md](docs/outbound.md).

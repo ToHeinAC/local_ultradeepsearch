@@ -62,13 +62,18 @@ appearance, the Sources list and the appendix.
 
 ## Service and command
 
-`ResearchService` (`research/service.py`) is what `udr run` calls and REST and MCP will call in
-M6: `create_external_run`, `run`, `view`, `plan_text`, `update_plan`, `approve_plan`. It owns the
-run status: `running` while a graph executes, `awaiting_plan_approval` while the owner reviews,
+`ResearchService` (`research/service.py`) is what `udr run`, the worker and the API call:
+`create_external_run`, `run`, `view`, `plan_text`, `update_plan`, `approve_plan`,
+`approve_and_run`, `request_cancel`, `resume`, `delete`, `report_file`. It owns the run status:
+`queued`, `running` while a graph executes, `awaiting_plan_approval` while the owner reviews,
 `done` or `blocked` at the end, `failed` if a step raised (with the step and the reason in
-`run.json`). `run` continues a failed or interrupted run from its last checkpoint; a crash signal
-(`BaseException`) is never caught. A run whose row says `running` while its graph already waits
-for the plan is set back to `awaiting_plan_approval`.
+`run.json`), `cancelled`, and `awaiting_brief_approval` for an API run nobody approved yet.
+`approve_plan` only stores the approved hash and queues the run; `run` carries it on (the hash is
+cleared only after the approval went through, so a crash in between loses nothing).
+`approve_and_run` does both, for `udr run`. `run` continues a failed, cancelled or interrupted run
+from its last checkpoint; a crash signal (`BaseException`) is never caught. Cancel raises
+`RunCancelled` at a step boundary, between sweep queries and between draft sections. The worker and
+the API: [api.md](api.md).
 
 The worker slot is the lock file `data/worker.lock` (`worker.py`), held only while a graph
 executes and released at the plan interrupt; the operating system frees it when its holder dies.
@@ -91,10 +96,10 @@ registry's context sizes, `SubprocessPandoc` and the lock.
 
 | What | Where |
 |---|---|
-| Runs, settings, searches | `data/udr.sqlite` |
+| Runs, settings, searches, API keys | `data/udr.sqlite` |
 | Checkpoints, worker slot | `data/checkpoints.sqlite`, `data/worker.lock` |
 | Archived briefs | `data/briefs/` |
-| Files of a run | `data/runs/<run_id>/`: `query.md`, `scaffold.md`, `run.json`, `prompt-decomposition.json`, `search-plan.json`, `shims/`, `notes/`, `temp/` (sections, must-read set, evidence keys, gate state), `polish-log.json`, `readability-*.json`, `report.md`, `gate.json`, `report.docx`, `report.pdf` |
+| Files of a run | `data/runs/<run_id>/`: `query.md`, `scaffold.md`, `run.json`, `prompt-decomposition.json`, `search-plan.json`, `shims/`, `notes/`, `events.jsonl`, `temp/` (sections, must-read set, evidence keys, gate state), `polish-log.json`, `readability-*.json`, `report.md`, `gate.json`, `report.docx`, `report.pdf` |
 
 ## Tests
 
