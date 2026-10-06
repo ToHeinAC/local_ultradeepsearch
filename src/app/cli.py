@@ -203,7 +203,7 @@ def _advance(
     if view.status != "awaiting_plan_approval":
         return view
     if approve_plan:
-        return service.approve_plan(run_id, approve_plan)
+        return service.approve_and_run(run_id, approve_plan)
     if no_input:
         _show_plan_and_stop(view)
         return view

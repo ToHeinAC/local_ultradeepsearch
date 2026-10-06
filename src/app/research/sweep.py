@@ -6,7 +6,7 @@ A provider outage never fails the run: the search is stored empty and the gaps a
 """
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -30,6 +30,7 @@ from app.research.candidates import (
     select_for_items,
     select_wave,
 )
+from app.research.errors import check_stop, never_stop
 from app.research.models import (
     AtomicItem,
     Decomposition,
@@ -87,6 +88,7 @@ class SweepDeps:
     budget: ResearchBudget
     rules: RunRules
     events: EventSink
+    stop: Callable[[], bool] = never_stop  # true once the owner cancelled the run
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,7 @@ class Sweeper:
             for source in sources_for(query, ctx.domains):
                 if d.searches.has(d.run_id, query.query_id, source):
                     continue
+                check_stop(d.stop)
                 hits = self._ask(query, source)
                 d.searches.add(d.run_id, query.query_id, source, wave, encode_results(hits))
 

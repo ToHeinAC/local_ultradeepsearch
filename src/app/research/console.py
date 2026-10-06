@@ -77,7 +77,7 @@ def _add(service: ResearchService, io: ConsoleIO, run_id: str) -> None:
 
 
 def _approve(service: ResearchService, io: ConsoleIO, run_id: str) -> Outcome:
-    service.approve_plan(run_id, str(service.view(run_id).plan_sha256))
+    service.approve_and_run(run_id, str(service.view(run_id).plan_sha256))
     return "approved"
 
 

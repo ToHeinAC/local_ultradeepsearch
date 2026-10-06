@@ -7,7 +7,7 @@ states the gap, so nothing is invented.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +17,7 @@ from app.llm.service import LLMService
 from app.llm.types import Message, Role
 from app.pipeline.profiles import FormatRange, RunRules
 from app.prompts import research as prompts
+from app.research.errors import check_stop, never_stop
 from app.research.evidence import EvidenceKeys, PackBuilder, section_query
 from app.research.models import Decomposition
 from app.research.sections import load_section, save_section
@@ -101,11 +102,14 @@ class Drafter:
         self._prompt_chars = prompt_chars
         self._condense_chars = condense_chars
 
-    def draft_all(self, run_dir: Path, plan: DraftPlan) -> None:
-        """Write every section that has no file yet. A model failure propagates; what was saved
-        stays saved."""
+    def draft_all(
+        self, run_dir: Path, plan: DraftPlan, stop: Callable[[], bool] = never_stop
+    ) -> None:
+        """Write every section that has no file yet; ``stop`` is asked before each one. A model
+        failure propagates; what was saved stays saved."""
         for index in range(1, len(plan.sections) + 1):
             if load_section(run_dir, index) is None:
+                check_stop(stop)
                 self.write(run_dir, plan, index)
 
     def redraft_in_language(self, run_dir: Path, plan: DraftPlan, index: int) -> None:

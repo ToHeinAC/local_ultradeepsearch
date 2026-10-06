@@ -120,8 +120,10 @@ def test_an_approved_plan_queues_the_run_once(runs: RunStore) -> None:
     assert status_of(runs, run_id) == "queued"
     with pytest.raises(WrongState):  # the second of two concurrent approvals
         runs.set_pending_plan(run_id, "q" * 64)
-    assert runs.take_pending_plan(run_id) == "p" * 64
-    assert runs.take_pending_plan(run_id) is None
+    assert runs.pending_plan(run_id) == "p" * 64
+    assert runs.pending_plan(run_id) == "p" * 64  # reading does not clear it
+    runs.clear_pending_plan(run_id)
+    assert runs.pending_plan(run_id) is None
 
 
 def test_a_plan_can_only_be_approved_while_it_awaits_approval(runs: RunStore) -> None:
@@ -136,7 +138,7 @@ def test_cancelling_a_queued_run_drops_its_pending_plan(runs: RunStore) -> None:
     run_id = new_run(runs, "awaiting_plan_approval")
     runs.set_pending_plan(run_id, "p" * 64)
     runs.request_cancel(run_id)
-    assert runs.take_pending_plan(run_id) is None
+    assert runs.pending_plan(run_id) is None
 
 
 def test_the_next_runnable_run_is_an_orphan_first_then_the_oldest_queued(runs: RunStore) -> None:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fixtures_corpus import Built, Outcome, article, build, doc, site
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -93,10 +94,10 @@ class RunRig:
     built: dict[str, Built]
     steps: ResearchSteps
 
-    def create(self, **kwargs: str) -> RunView:
+    def create(self, **kwargs: Any) -> RunView:
         """An external run of the rig's brief, queued."""
         args = {"tier": "light", "template_id": TEMPLATE, "language": "de"}
-        return self.service.create_external_run(RAW_BRIEF, **{**args, **kwargs})  # type: ignore[arg-type]
+        return self.service.create_external_run(RAW_BRIEF, **{**args, **kwargs})
 
     def run_dir(self, run_id: str) -> Path:
         return self.base / "runs" / run_id
@@ -175,6 +176,7 @@ def _contexts(
                 searcher=searcher,
                 ingestor=b.pipeline,
                 reference_docx=None,
+                should_stop=lambda: runs.cancel_requested(run_id),
             )
         return contexts[run_id]
 

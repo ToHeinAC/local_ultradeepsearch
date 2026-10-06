@@ -1,4 +1,6 @@
-"""Errors of Phase 2 that callers (CLI, later REST and MCP) tell apart."""
+"""Errors of Phase 2 that callers (CLI, REST and MCP) tell apart."""
+
+from collections.abc import Callable
 
 
 class ResearchError(Exception):
@@ -23,3 +25,25 @@ class InvalidEdit(ResearchError):
 
 class WorkerBusy(ResearchError):
     """Another run holds the worker slot."""
+
+
+class RunCancelled(ResearchError):
+    """The owner asked to cancel; the run stops at the next safe point (never a failure)."""
+
+
+class ReportNotReady(ResearchError):
+    """The run has no report to hand out yet; ``status`` is where it stands (HTTP 409)."""
+
+    def __init__(self, status: str) -> None:
+        super().__init__(f"the run is {status}")
+        self.status = status
+
+
+def never_stop() -> bool:
+    return False
+
+
+def check_stop(stop: Callable[[], bool]) -> None:
+    """Raise `RunCancelled` when ``stop`` says the run was cancelled."""
+    if stop():
+        raise RunCancelled

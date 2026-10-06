@@ -22,6 +22,7 @@ from app.pipeline.strategies import SourceStrategies
 from app.research.candidates import collect_candidates, provenance
 from app.research.decompose import Decomposer, write_artifacts
 from app.research.draft import Drafter, DraftPlan, sections_of
+from app.research.errors import check_stop, never_stop
 from app.research.evidence import EvidenceKeys, PackBuilder, select_must_read
 from app.research.export import PandocRunner, export_report
 from app.research.fixes_model import ModelFixes
@@ -68,6 +69,7 @@ class RunContext:
     searcher: Searcher
     ingestor: Ingestor
     reference_docx: Path | None
+    should_stop: Callable[[], bool] = never_stop  # true once the owner cancelled the run
 
 
 @dataclass(frozen=True)
@@ -94,7 +96,9 @@ class ResearchSteps:
         self._contexts = contexts
 
     def _step(self, ctx: RunContext, step: str, work: Callable[[], None]) -> None:
-        """Run ``work`` as step ``step`` unless it finished before."""
+        """Run ``work`` as step ``step`` unless it finished before. A cancelled run stops here,
+        before the step begins."""
+        check_stop(ctx.should_stop)
         if begin_step(ctx.run_dir, step, self._d.now()):
             work()
             finish_step(ctx.run_dir, step, self._d.now())
@@ -177,6 +181,7 @@ class ResearchSteps:
                     budget=d.budgets[ctx.settings.tier],
                     rules=d.rules,
                     events=d.events,
+                    stop=ctx.should_stop,
                 )
             )
             sweeper.run(ctx.brief.text, load_plan(ctx.run_dir), self._decomposition(ctx))
@@ -191,7 +196,7 @@ class ResearchSteps:
         def work() -> None:
             plan = self._draft_plan(ctx, self._must_read(ctx))
             keys, drafter, _ = self._writers(ctx)
-            drafter.draft_all(ctx.run_dir, plan)
+            drafter.draft_all(ctx.run_dir, plan, ctx.should_stop)
             self._render(ctx, plan, keys)
 
         self._step(ctx, "10", work)

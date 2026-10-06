@@ -245,15 +245,20 @@ class RunStore:
                 status = self._locked(run_id)["status"]
                 raise WrongState(f"run is {status}, its plan cannot be approved")
 
-    def take_pending_plan(self, run_id: str) -> str | None:
-        """The approved plan hash waiting for the worker, read and cleared in one transaction."""
+    def pending_plan(self, run_id: str) -> str | None:
+        """The approved plan hash waiting for the worker. It stays until the worker has carried
+        the approval through, so a crash in between does not lose it."""
+        with self._db.lock:
+            row = self._db.conn.execute(
+                "SELECT pending_plan_sha256 FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+        return row["pending_plan_sha256"] if row else None
+
+    def clear_pending_plan(self, run_id: str) -> None:
         with self._db.tx():
-            sha = self._locked(run_id)["pending_plan_sha256"]
-            if sha is not None:
-                self._db.conn.execute(
-                    "UPDATE runs SET pending_plan_sha256 = NULL WHERE run_id = ?", (run_id,)
-                )
-        return sha
+            self._db.conn.execute(
+                "UPDATE runs SET pending_plan_sha256 = NULL WHERE run_id = ?", (run_id,)
+            )
 
     def next_runnable(self) -> RunRow | None:
         """The run a worker takes next: an orphan left `running` by a dead worker first, else the

@@ -21,7 +21,7 @@ def main(base_dir: Path, mode: str) -> None:
     run_id = rig.create().run_id
     print(f"RUN {run_id}", flush=True)
     rig.service.run(run_id)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     print("DONE", flush=True)  # never reached: a call hangs until the parent kills us
 
 

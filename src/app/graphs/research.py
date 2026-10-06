@@ -97,6 +97,10 @@ class ResearchRunner:
         """Continue from the last checkpoint (after a crash or an error)."""
         self._invoke(None, run_id)
 
+    def delete_thread(self, run_id: str) -> None:
+        """Forget every checkpoint of the run."""
+        self._graph.checkpointer.delete_thread(run_id)
+
     def snapshot(self, run_id: str) -> Snapshot:
         state = self._graph.get_state(self._config(run_id))
         waiting = [i.value for task in state.tasks for i in task.interrupts]

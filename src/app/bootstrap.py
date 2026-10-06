@@ -3,7 +3,7 @@
 import os
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -426,7 +426,8 @@ def _run_context_factory(
             if row is None:
                 raise NotFound(run_id)
             session = sessions.get(row.session_id) if row.session_id else None
-            cache[run_id] = _build_run_context(rt, row, session, templates, make_gateway)
+            built = _build_run_context(rt, row, session, templates, make_gateway)
+            cache[run_id] = replace(built, should_stop=lambda: runs.cancel_requested(run_id))
         return cache[run_id]
 
     return context

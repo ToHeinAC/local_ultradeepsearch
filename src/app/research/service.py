@@ -7,6 +7,7 @@ end, `failed` if a step raised (the run continues from its last checkpoint when 
 """
 
 import json
+import shutil
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from app.brief.render import BriefContext, brief_sha256, render_external
 from app.events import EventSink
 from app.graphs.research import ResearchRunner
 from app.pipeline.profiles import ResponseFormats
-from app.research.errors import ResearchError
+from app.research.errors import ReportNotReady, ResearchError, RunCancelled
 from app.research.manifest import read_run_json, record_failure
 from app.research.models import Decomposition, SearchPlan, atomic_items
 from app.research.plan import PLAN_FILE, check_approvable, load_plan, plan_hash, save_plan
@@ -33,6 +34,7 @@ from app.store.runs import RunRow, RunStore
 from app.templates import ReportTemplate, TemplateError, get_template
 
 TIERS = ("light", "full")
+REPORT_FORMATS = ("md", "docx", "pdf")
 
 
 class TierNotAvailable(ResearchError):
@@ -96,21 +98,18 @@ class ResearchService:
         template_id: str,
         language: str | None = None,
         response_format: str | None = None,
+        approved: bool = True,
+        created_by: str | None = None,
     ) -> RunView:
         """A run for a brief written elsewhere (PRD M5 `udr run --brief`): code adds the Method
         line and the Output section, archives the bytes and queues the run. Starting it from the
-        owner's shell is the approval."""
+        owner's shell is the approval; an API caller without `approved` leaves it
+        `awaiting_brief_approval`. Tier `auto` becomes `light` until the full tier exists."""
+        auto = tier == "auto"
+        tier = "light" if auto else tier
         if tier not in TIERS:
             raise InvalidInput(f"tier must be light or full, got {tier!r}")
-        try:
-            template = get_template(self._d.templates, template_id)
-        except TemplateError as exc:
-            raise InvalidInput(str(exc)) from exc
-        settings = SessionSettings(
-            report_language=language or template.language,
-            response_format=response_format or template.default_response_format,  # type: ignore[arg-type]
-            template_id=template.id,
-        )
+        settings, template = self._external_settings(template_id, language, response_format)
         ctx = self._external_context(settings, template)
         try:
             text = render_external(brief, ctx)
@@ -128,8 +127,26 @@ class ResearchService:
             brief_path=str(path),
             tier=tier,
             settings_json=json.dumps(stored),
+            status="queued" if approved else "awaiting_brief_approval",
+            created_by=created_by,
         )
+        if auto:
+            self._d.events.emit("tier_auto_resolved", run_id=row.run_id, tier="light")
         return self.view(row.run_id)
+
+    def _external_settings(
+        self, template_id: str, language: str | None, response_format: str | None
+    ) -> tuple[SessionSettings, ReportTemplate]:
+        try:
+            template = get_template(self._d.templates, template_id)
+        except TemplateError as exc:
+            raise InvalidInput(str(exc)) from exc
+        settings = SessionSettings(
+            report_language=language or template.language,
+            response_format=response_format or template.default_response_format,  # type: ignore[arg-type]
+            template_id=template.id,
+        )
+        return settings, template
 
     def _external_context(
         self, settings: SessionSettings, template: ReportTemplate
@@ -149,12 +166,13 @@ class ResearchService:
 
     def run(self, run_id: str) -> RunView:
         """Start the run, or continue it from its last checkpoint, until it waits for the plan
-        approval, finishes or fails. A finished run, or one waiting for approval, is left alone.
+        approval, finishes, is cancelled or fails. A run that is finished, waiting for an approval
+        or cancelled is left alone. An approved plan waiting for the worker is carried on.
         Raises `WorkerBusy` while another run is active."""
         row = self._row(run_id)
         if row.tier not in TIERS or row.tier == "full":
             raise TierNotAvailable("the full tier arrives with milestones M8 and M9")
-        if row.status in ("done", "blocked", "awaiting_plan_approval"):
+        if row.status not in ("queued", "running", "failed", "created"):
             return self.view(run_id)
         with WorkerLock(self._d.lock_path):
             self._d.runs.set_status(run_id, "running")
@@ -163,22 +181,36 @@ class ResearchService:
 
     def _start_or_continue(self, run_id: str) -> None:
         snapshot = self._d.runner.snapshot(run_id)
-        if snapshot.interrupt is not None:  # the graph already waits: the status follows it
-            self._d.runs.set_status(run_id, "awaiting_plan_approval")
-            return
-        if snapshot.values:
+        pending = self._d.runs.pending_plan(run_id)
+        if snapshot.interrupt is not None:
+            if pending is None:  # the graph waits and nobody approved: the status follows it
+                self._d.runs.set_status(run_id, "awaiting_plan_approval")
+                return
+            self._d.runner.resume(run_id, {"action": "approve", "plan_sha256": pending})
+        elif snapshot.values:
             self._d.runner.proceed(run_id)
         else:
             self._d.runner.start(run_id)
+        self._d.runs.clear_pending_plan(run_id)
 
     def _guarded(self, run_id: str, work: Callable[[], None]) -> None:
-        """Run ``work``; a step that raises makes the run `failed`, with its reason. A crash
-        signal (`BaseException`) is never swallowed. The run's events go to its own file."""
-        with self._d.bind(run_id, self._d.contexts(run_id).run_dir):
+        """Run ``work``; a step that raises makes the run `failed`, with its reason; a
+        cancellation makes it `cancelled`. A crash signal (`BaseException`) is never swallowed.
+        The run's events go to its own file."""
+        ctx = self._d.contexts(run_id)
+        with self._d.bind(run_id, ctx.run_dir):
             try:
                 work()
+            except RunCancelled:
+                self._cancelled(run_id)
             except Exception as exc:
                 self._fail(run_id, exc)
+
+    def _cancelled(self, run_id: str) -> None:
+        step = _current_step(read_run_json(self._d.contexts(run_id).run_dir))
+        self._d.runs.set_status(run_id, "cancelled")
+        self._d.runs.clear_cancel(run_id)
+        self._d.events.emit("run_cancelled", run_id=run_id, step=step)
 
     def _fail(self, run_id: str, exc: Exception) -> None:
         ctx = self._d.contexts(run_id)
@@ -210,18 +242,66 @@ class ResearchService:
         return self.view(run_id)
 
     def approve_plan(self, run_id: str, sha256: str) -> RunView:
-        """Approve the plan whose hash is ``sha256`` and carry the run on to its end. A stale hash
-        is `StalePlan`, a plan with queries that cannot be sent is `PlanBlocked`."""
+        """Approve the plan whose hash is ``sha256``: the run becomes `queued` and the worker
+        (or `run`) carries it on. A stale hash is `StalePlan`, a plan with queries that cannot be
+        sent is `PlanBlocked`, a second approval is `WrongState`."""
         self._require_awaiting(run_id)
         check_approvable(self._plan(run_id), sha256)
-        with WorkerLock(self._d.lock_path):
-            self._guarded(
-                run_id,
-                lambda: self._d.runner.resume(run_id, {"action": "approve", "plan_sha256": sha256}),
-            )
+        self._d.runs.set_pending_plan(run_id, sha256)
         return self.view(run_id)
 
+    def approve_and_run(self, run_id: str, sha256: str) -> RunView:
+        """Approve the plan and carry the run on to its end in this process (`udr run`)."""
+        self.approve_plan(run_id, sha256)
+        return self.run(run_id)
+
+    def approve_external(self, run_id: str, brief_sha256: str) -> RunView:
+        """Approve the brief of a run that an API key without `self_approve` created."""
+        self._d.runs.approve_external(run_id, brief_sha256)
+        return self.view(run_id)
+
+    # ---- control --------------------------------------------------------------------------
+
+    def request_cancel(self, run_id: str) -> RunView:
+        """Cancel at once a run that does not execute; a running one stops at the next node
+        boundary, between two sweep queries or between two draft sections."""
+        self._d.runs.request_cancel(run_id)
+        return self.view(run_id)
+
+    def resume(self, run_id: str) -> RunView:
+        """Queue a `failed` or `cancelled` run again; it continues from its last checkpoint."""
+        status = self._row(run_id).status
+        if status not in ("failed", "cancelled"):
+            raise WrongState(f"the run is {status}, only a failed or cancelled run resumes")
+        self._d.runs.set_status(run_id, "queued")
+        return self.view(run_id)
+
+    def delete(self, run_id: str) -> None:
+        """Remove a run: its rows, its checkpoints, its directory and the uploads of its session.
+        The archived brief stays. A running run is `WrongState`."""
+        row = self._d.runs.delete_run(run_id)
+        self._d.runner.delete_thread(run_id)
+        shutil.rmtree(self._d.data_dir / "runs" / run_id, ignore_errors=True)
+        if row.session_id is not None:
+            shutil.rmtree(self._d.data_dir / "uploads" / row.session_id, ignore_errors=True)
+
     # ---- reading --------------------------------------------------------------------------
+
+    def list_runs(self, limit: int = 100) -> list[RunView]:
+        return [self.view(row.run_id) for row in self._d.runs.list_runs(limit)]
+
+    def report_file(self, run_id: str, fmt: str) -> Path:
+        """The report as `md`, `docx` or `pdf`. Only a finished run has one (`done`, or `blocked`
+        with every file downloadable); a format whose export failed is `NotFound`."""
+        if fmt not in REPORT_FORMATS:
+            raise InvalidInput(f"format must be one of {', '.join(REPORT_FORMATS)}")
+        status = self._row(run_id).status
+        if status not in ("done", "blocked"):
+            raise ReportNotReady(status)
+        path = self._d.contexts(run_id).run_dir / f"report.{fmt}"
+        if not path.exists():
+            raise NotFound(f"the run has no {fmt} report")
+        return path
 
     def view(self, run_id: str) -> RunView:
         row = self._row(run_id)

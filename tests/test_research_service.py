@@ -52,7 +52,7 @@ def at_plan_gate(r: RunRig) -> str:
 def test_a_light_run_records_exactly_the_light_steps_and_no_full_only_artifact(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
     assert done_steps(rig.run_dir(run_id)) == ["0", "1", "2.1"]
-    view = rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    view = rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     assert (view.status, view.waiting_for) == ("done", "nothing")
     assert done_steps(rig.run_dir(run_id)) == list(LIGHT_STEPS)
     assert not [n for n in FULL_ONLY if (rig.run_dir(run_id) / n).exists()]
@@ -61,7 +61,7 @@ def test_a_light_run_records_exactly_the_light_steps_and_no_full_only_artifact(r
 
 def test_the_report_has_the_templates_headings_then_sources_and_the_appendix(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
-    view = rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    view = rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     report = Path(str(view.report_path)).read_text(encoding="utf-8")
     assert h2_list(report) == [
         *TEMPLATES[TEMPLATE].headings,
@@ -75,7 +75,7 @@ def test_the_report_has_the_templates_headings_then_sources_and_the_appendix(rig
 
 def test_the_run_artifacts_of_each_step_exist(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     d = rig.run_dir(run_id)
     for name in (
         "query.md",
@@ -102,7 +102,7 @@ def test_every_step_after_the_gate_works_from_stored_files_not_memory(
     rig: RunRig, tmp_path: Path
 ) -> None:
     run_id = at_plan_gate(rig)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     saved = json.loads((rig.run_dir(run_id) / "run.json").read_text(encoding="utf-8"))
     assert saved["settings"]["template_id"] == TEMPLATE
     assert saved["gate"] == {"passed": True, "failed": []}
@@ -146,7 +146,7 @@ def test_a_plan_with_a_denylisted_query_cannot_be_approved(tmp_path: Path) -> No
     view = r.service.view(run_id)
     assert [q.blocked for q in view.plan.queries if q.blocked] == ["denylist"]  # type: ignore[union-attr]
     with pytest.raises(PlanBlocked, match="q01"):
-        r.service.approve_plan(run_id, str(view.plan_sha256))
+        r.service.approve_and_run(run_id, str(view.plan_sha256))
     assert r.service.view(run_id).status == "awaiting_plan_approval"
     assert r.searcher.calls == []
 
@@ -161,7 +161,7 @@ def test_a_blocked_query_can_be_edited_away_and_the_plan_approved(tmp_path: Path
     )
     view = r.service.update_plan(run_id, edited)
     assert not [q for q in view.plan.queries if q.blocked]  # type: ignore[union-attr]
-    done = r.service.approve_plan(run_id, str(view.plan_sha256))
+    done = r.service.approve_and_run(run_id, str(view.plan_sha256))
     assert done.status in ("done", "blocked")
     assert ("web", "Rückbau Forschungsreaktor Dauer allgemein") in r.searcher.calls
 
@@ -175,9 +175,9 @@ def test_a_stale_plan_hash_is_refused_and_an_edit_makes_the_old_hash_stale(rig: 
     new = rig.service.update_plan(run_id, edited).plan_sha256
     assert new != old
     with pytest.raises(StalePlan):
-        rig.service.approve_plan(run_id, old)
+        rig.service.approve_and_run(run_id, old)
     assert rig.service.view(run_id).status == "awaiting_plan_approval"
-    assert rig.service.approve_plan(run_id, str(new)).status in ("done", "blocked")
+    assert rig.service.approve_and_run(run_id, str(new)).status in ("done", "blocked")
 
 
 def test_the_plan_can_only_be_edited_or_approved_while_the_run_waits_for_it(rig: RunRig) -> None:
@@ -185,11 +185,11 @@ def test_the_plan_can_only_be_edited_or_approved_while_the_run_waits_for_it(rig:
     with pytest.raises(WrongState, match="queued"):
         rig.service.update_plan(run_id, "q01 | Q1 | A | x")
     with pytest.raises(WrongState, match="queued"):
-        rig.service.approve_plan(run_id, "0" * 64)
+        rig.service.approve_and_run(run_id, "0" * 64)
     with pytest.raises(WrongState, match="no search plan"):
         rig.service.plan_text(run_id)
     at_gate = at_plan_gate(rig)
-    rig.service.approve_plan(at_gate, str(rig.service.view(at_gate).plan_sha256))
+    rig.service.approve_and_run(at_gate, str(rig.service.view(at_gate).plan_sha256))
     with pytest.raises(WrongState, match="done"):
         rig.service.update_plan(at_gate, "q01 | Q1 | A | x")
 
@@ -199,7 +199,7 @@ def test_running_a_run_that_waits_or_is_finished_changes_nothing(rig: RunRig) ->
     before = rig.models.calls.copy()
     assert rig.service.run(run_id).status == "awaiting_plan_approval"
     assert rig.models.calls == before
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     calls = rig.models.calls.copy()
     assert rig.service.run(run_id).status == "done"
     assert rig.models.calls == calls
@@ -306,7 +306,7 @@ def test_a_crash_signal_is_not_swallowed_and_the_next_process_continues(tmp_path
     run_id = first.create().run_id
     first.service.run(run_id)
     with pytest.raises(ModelCrash):
-        first.service.approve_plan(run_id, str(first.service.view(run_id).plan_sha256))
+        first.service.approve_and_run(run_id, str(first.service.view(run_id).plan_sha256))
     assert first.runs.get_run(run_id).status == "running"  # type: ignore[union-attr]
     second = make_rig(tmp_path)
     view = second.service.run(run_id)
@@ -329,7 +329,7 @@ def test_a_report_that_fails_the_gate_leaves_the_run_blocked_with_every_file_dow
     )
     r = make_rig(tmp_path, models=models)
     run_id = at_plan_gate(r)
-    view = r.service.approve_plan(run_id, str(r.service.view(run_id).plan_sha256))
+    view = r.service.approve_and_run(run_id, str(r.service.view(run_id).plan_sha256))
     assert (view.status, view.waiting_for) == ("blocked", "nothing")
     assert "G7" in view.gate_failed
     d = r.run_dir(run_id)
@@ -345,7 +345,7 @@ def test_a_report_that_fails_the_gate_leaves_the_run_blocked_with_every_file_dow
 def test_a_missing_pandoc_does_not_change_the_gate_outcome(tmp_path: Path) -> None:
     r = make_rig(tmp_path, pandoc=FakePandoc(code=127))
     run_id = at_plan_gate(r)
-    view = r.service.approve_plan(run_id, str(r.service.view(run_id).plan_sha256))
+    view = r.service.approve_and_run(run_id, str(r.service.view(run_id).plan_sha256))
     assert view.status == "done"
     assert view.exports == {"docx": "pandoc_missing", "pdf": "ok"}
     assert (r.run_dir(run_id) / "report.md").exists()
@@ -356,7 +356,7 @@ def test_a_missing_pandoc_does_not_change_the_gate_outcome(tmp_path: Path) -> No
 
 def test_the_events_tell_the_story_of_the_run(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     assert [e.data["status"] for e in rig.events.of_type("run_finished")] == ["done"]
     assert [e.data["run_id"] for e in rig.events.of_type("plan_approved")] == [run_id]
 
@@ -364,7 +364,7 @@ def test_the_events_tell_the_story_of_the_run(rig: RunRig) -> None:
 def test_every_event_of_a_run_lands_in_its_own_file_with_the_run_id(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
     second = rig.create().run_id
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     events, cursor = read_run_events(rig.base / "runs" / run_id, 0)
     types = [e["type"] for e in events]
     assert "plan_approved" in types
@@ -386,7 +386,7 @@ def test_a_run_whose_graph_waits_for_the_plan_is_not_left_running(rig: RunRig) -
     view = rig.service.run(run_id)
     assert (view.status, view.waiting_for) == ("awaiting_plan_approval", "plan")
     assert rig.models.calls == calls  # nothing was planned again
-    assert rig.service.approve_plan(run_id, str(view.plan_sha256)).status == "done"
+    assert rig.service.approve_and_run(run_id, str(view.plan_sha256)).status == "done"
 
 
 def test_the_approval_step_checks_the_plan_hash_itself(rig: RunRig) -> None:
@@ -400,7 +400,7 @@ def test_the_approval_step_checks_the_plan_hash_itself(rig: RunRig) -> None:
 
 def test_the_must_read_set_is_chosen_once_and_then_read_from_its_file(rig: RunRig) -> None:
     run_id = at_plan_gate(rig)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     path = rig.run_dir(run_id) / "temp" / "must-read.json"
     path.write_text(json.dumps({"note_ids": ["n0001"]}), encoding="utf-8")
     ctx = rig.steps._contexts(run_id)  # pyright: ignore[reportPrivateUsage]
@@ -421,7 +421,7 @@ def test_polish_cuts_reach_the_report_file_before_the_next_step_runs(tmp_path: P
     run_id = r.create().run_id
     r.service.run(run_id)
     with pytest.raises(ModelCrash):
-        r.service.approve_plan(run_id, str(r.service.view(run_id).plan_sha256))
+        r.service.approve_and_run(run_id, str(r.service.view(run_id).plan_sha256))
     report = (r.run_dir(run_id) / "report.md").read_text(encoding="utf-8")
     assert filler not in report
     assert "Der Rückbau zehn Jahre dauert" in report

@@ -46,7 +46,7 @@ def reference(base_dir: Path) -> tuple[list[tuple[str, str]], int]:
     rig = make_rig(base_dir)
     run_id = rig.create().run_id
     rig.service.run(run_id)
-    rig.service.approve_plan(run_id, str(rig.service.view(run_id).plan_sha256))
+    rig.service.approve_and_run(run_id, str(rig.service.view(run_id).plan_sha256))
     return rig.searcher.calls, rig.models.count("text")
 
 

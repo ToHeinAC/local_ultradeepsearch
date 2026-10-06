@@ -101,7 +101,7 @@ def test_a_run_goes_from_an_external_brief_to_a_report_through_the_composition(
     ).run_id
     waiting = service.run(run_id)
     assert (waiting.status, waiting.waiting_for) == ("awaiting_plan_approval", "plan")
-    done = service.approve_plan(run_id, str(waiting.plan_sha256))
+    done = service.approve_and_run(run_id, str(waiting.plan_sha256))
     assert done.error is None, done.error
     assert (done.status, done.exports) == ("done", {"docx": "ok", "pdf": "ok"})
     data = rt.settings.data_dir
@@ -135,7 +135,7 @@ def test_without_a_pandoc_binary_the_run_still_ends_and_says_why(
     run_id = service.create_external_run(
         RAW_BRIEF, tier="light", template_id=TEMPLATE, language="de"
     ).run_id
-    done = service.approve_plan(run_id, str(service.run(run_id).plan_sha256))
+    done = service.approve_and_run(run_id, str(service.run(run_id).plan_sha256))
     assert done.status == "done"
     assert done.exports == {"docx": "pandoc_missing", "pdf": "ok"}
     pdf = rt.settings.data_dir / "runs" / run_id / "report.pdf"

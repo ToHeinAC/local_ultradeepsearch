@@ -5,7 +5,7 @@ import json
 import re
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -153,8 +153,10 @@ class FakeSearcher:
         fail: dict[tuple[str, str], Exception] | None = None,
         crash_at: int | None = None,
         hang_at: int | None = None,
+        on_call: Callable[[int], None] | None = None,
     ) -> None:
         self.hang_at = hang_at  # the n-th call sleeps "forever" (a SIGKILL test kills it there)
+        self.on_call = on_call  # told the 1-based number of each search, before it answers
         self.web = web or {}
         self.scholarly = scholarly or {}
         self.fail = fail or {}
@@ -163,6 +165,8 @@ class FakeSearcher:
 
     def _enter(self, source: str, sent: str) -> None:
         self.calls.append((source, sent))
+        if self.on_call is not None:
+            self.on_call(len(self.calls))
         if self.crash_at == len(self.calls):
             raise SearchCrash(f"crash at search {len(self.calls)}")
         if self.hang_at == len(self.calls):
@@ -261,6 +265,7 @@ class ResearchModels:
     crash_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call crashes
     answers: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: {})  # by schema title
     hang_on: dict[str, int] = field(default_factory=lambda: {})  # kind -> n-th call sleeps
+    on_call: Callable[[str, int], None] | None = None  # told (kind, n) of each call
     thinks: dict[str, list[bool]] = field(default_factory=lambda: {})  # kind -> `think` per call
     models_used: dict[str, set[str]] = field(default_factory=lambda: {})  # kind -> model tags
     polishes: list[dict[str, Any]] = field(
@@ -287,6 +292,8 @@ class ResearchModels:
             self.prompts.setdefault(kind, []).append(
                 "\n".join(m["content"] for m in request.messages)
             )
+        if self.on_call is not None:
+            self.on_call(kind, number)
         if self.crash_on.get(kind) == number:
             raise ModelCrash(f"crash in {kind} call {number}")
         if self.hang_on.get(kind) == number:
