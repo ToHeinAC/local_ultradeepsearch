@@ -134,6 +134,17 @@ class ResearchProfiles(BaseModel):
     rules: RunRules
 
 
+class ServiceLimits(BaseModel):
+    """Numbers of the API and the worker (PRD M6)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    worker_poll_s: float = Field(gt=0)  # how often an idle worker looks at the queue
+    sse_poll_s: float = Field(gt=0)  # how often the event stream looks at the run's file
+    session_threads: int = Field(ge=1)  # Phase-1 jobs that run at the same time
+    summarize_models: tuple[str, ...] = Field(min_length=1)  # what `summarize_model` accepts
+
+
 class Profiles(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -150,6 +161,7 @@ def _raw(config_dir: Path) -> dict[str, Any]:
 def _load(config_dir: Path) -> Profiles:
     raw = _raw(config_dir)
     raw.pop("research", None)  # validated on its own: Phase 1 does not need it
+    raw.pop("service", None)
     return Profiles.model_validate(raw)
 
 
@@ -183,3 +195,7 @@ def load_research_budget(name: str, config_dir: Path) -> ResearchBudget:
 
 def load_run_rules(config_dir: Path) -> RunRules:
     return _load_research(config_dir).rules
+
+
+def load_service_limits(config_dir: Path) -> ServiceLimits:
+    return ServiceLimits.model_validate(_raw(config_dir).get("service", {}))

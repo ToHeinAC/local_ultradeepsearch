@@ -57,6 +57,7 @@ from app.pipeline.profiles import (
     load_research_budget,
     load_response_formats,
     load_run_rules,
+    load_service_limits,
 )
 from app.pipeline.strategies import load_strategies
 from app.research.export import PandocRunner
@@ -73,6 +74,7 @@ from app.store.runs import RunRow, RunStore
 from app.store.sessions import SessionRow, SessionStore
 from app.store.vault import Vault
 from app.templates import ReportTemplate, load_templates
+from app.worker import Worker
 
 CALIBRATION_FILE = "calibration.json"
 DENYLIST_FILE = "denylist.txt"
@@ -473,3 +475,11 @@ def build_research_service(
             now=now,
         )
     )
+
+
+def build_worker(
+    rt: Runtime, research: ResearchService, *, log: Callable[[str], None] = lambda _line: None
+) -> Worker:
+    """The queue worker over ``research``, polling as `config/profiles.toml` `[service]` says."""
+    limits = load_service_limits(rt.settings.config_dir)
+    return Worker(research, poll_s=limits.worker_poll_s, events=rt.events, log=log)

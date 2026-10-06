@@ -1,6 +1,10 @@
 """The `udr` command line. Thin: it wires `bootstrap`, calls pure logic and prints."""
 
+import signal
+import threading
+from collections.abc import Callable
 from pathlib import Path
+from types import FrameType
 from typing import Annotated
 
 import click
@@ -22,6 +26,7 @@ from app.llm.types import Role
 from app.research.console import render_plan, run_plan_review
 from app.research.errors import EmptyPlan, PlanBlocked, StalePlan, WorkerBusy
 from app.research.service import ResearchService, RunView, TierNotAvailable
+from app.worker import Worker
 
 app = typer.Typer(help="Local UltraDeep Researcher.", no_args_is_help=True, add_completion=False)
 
@@ -267,6 +272,36 @@ def run_cmd(
     except (InvalidInput, TierNotAvailable, StalePlan, PlanBlocked, EmptyPlan) as exc:
         raise _fail(f"Das ging nicht: {exc}", 2) from exc
     _report(view)
+
+
+def _worker() -> Worker:
+    """The queue worker on the real runtime; it logs one line per run to the terminal."""
+    settings = bootstrap.load_settings()
+    events = JsonlEventSink(settings.data_dir / "events.jsonl")
+    rt = bootstrap.build_runtime(settings, events)
+    return bootstrap.build_worker(rt, bootstrap.build_research_service(rt), log=typer.echo)
+
+
+def _stop_on_signal(stop: threading.Event) -> Callable[[int, FrameType | None], None]:
+    """A signal handler that ends the worker. It leaves the loop at once, even inside a run: the
+    run stays `running` and the next start resumes it from its last checkpoint."""
+
+    def handler(signum: int, frame: FrameType | None) -> None:
+        stop.set()
+        raise SystemExit(0)
+
+    return handler
+
+
+@app.command("worker")
+def worker_cmd() -> None:
+    """Führt freigegebene Recherche-Läufe aus der Warteschlange aus, einen nach dem anderen."""
+    worker = _worker()
+    stop = threading.Event()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, _stop_on_signal(stop))
+    typer.echo("Worker bereit.")
+    worker.run_forever(stop)
 
 
 denylist_app = typer.Typer(help="Terms that must never leave this machine (PRD §3.2).")

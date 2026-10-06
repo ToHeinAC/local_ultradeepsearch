@@ -164,3 +164,14 @@ def test_the_real_gateway_is_built_per_run_with_the_tiers_credit_cap(tmp_path: P
     assert isinstance(ctx.preparer, OutboundGateway)
     assert ctx.preparer.credit_cap == 60  # config/profiles.toml [light]
     assert ctx.searcher is ctx.preparer is ctx.ingestor.fetcher  # type: ignore[attr-defined]
+
+
+def test_the_worker_takes_a_queued_run_through_the_composition(tmp_path: Path) -> None:
+    service, _gw, _models, rt = wired(tmp_path, pandoc=FakePandoc())
+    run_id = service.create_external_run(
+        RAW_BRIEF, tier="light", template_id=TEMPLATE, language="de"
+    ).run_id
+    worker = bootstrap.build_worker(rt, service)
+    assert worker.run_once() == run_id
+    assert service.view(run_id).status == "awaiting_plan_approval"
+    assert worker.run_once() is None

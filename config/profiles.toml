@@ -81,3 +81,10 @@ quote_min_words = 5                # quoted spans of fewer words are not checked
 retraction_window_chars = 200      # G9
 language_samples = 3               # G12
 length_tolerance = [0.8, 1.2]      # G3: body words between 0.8 x low and 1.2 x high
+
+# The service (PRD M6): the API process and the worker.
+[service]
+worker_poll_s = 2                            # seconds between two looks at the queue
+sse_poll_s = 1                               # seconds between two looks at a run's event file
+session_threads = 2                          # Phase-1 jobs that run at the same time
+summarize_models = ["gemma4:e4b", "gemma4:e2b"]  # what a run's `summarize_model` may be

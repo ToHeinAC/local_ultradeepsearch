@@ -164,6 +164,17 @@ class ResearchService:
 
     # ---- running --------------------------------------------------------------------------
 
+    def next_runnable(self) -> str | None:
+        """The run a worker takes next: one a dead worker left `running`, else the oldest
+        `queued`."""
+        row = self._d.runs.next_runnable()
+        return row.run_id if row else None
+
+    def give_up(self, run_id: str, reason: str) -> None:
+        """Mark a run that cannot be executed (before any step ran) as `failed`."""
+        self._d.runs.set_status(run_id, "failed")
+        self._d.events.emit("run_failed", level="error", run_id=run_id, step="?", reason=reason)
+
     def run(self, run_id: str) -> RunView:
         """Start the run, or continue it from its last checkpoint, until it waits for the plan
         approval, finishes, is cancelled or fails. A run that is finished, waiting for an approval
