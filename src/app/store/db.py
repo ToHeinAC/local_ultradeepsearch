@@ -155,8 +155,23 @@ CREATE TABLE searches (
 ALTER TABLE runs ADD COLUMN settings_json TEXT;
 """
 
+MIGRATION_4 = """
+ALTER TABLE runs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN pending_plan_sha256 TEXT;
+ALTER TABLE runs ADD COLUMN created_by TEXT;
+CREATE TABLE api_keys (
+  key_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  key_sha256 TEXT NOT NULL UNIQUE,
+  self_approve INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+"""
+"""Migration 4: the run queue, cancel flag, pending plan approval and API keys (PRD M6)."""
+
 # Later milestones append their own migrations; never edit one that has shipped.
-MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3]
+MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4]
 
 
 WAL_RETRY_S = 5.0
