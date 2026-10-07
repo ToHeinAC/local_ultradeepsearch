@@ -7,14 +7,9 @@ import streamlit as st
 
 from app.client import ApiError
 from app.gui import texts
+from app.gui.state import go
 
 Json = dict[str, Any]
-
-
-def _go_to_plan(run_id: str) -> None:
-    from app.gui.pages.neue_recherche import go
-
-    go("suchplan", run=run_id)
 
 
 def _recommendation(view: Json) -> None:
@@ -112,7 +107,7 @@ def _approve(client: Any, session_id: str, view: Json, model: str | None, cap: i
             raise
         st.error(texts.STALE)
         return
-    _go_to_plan(approved["run_id"])
+    go("suchplan", run=approved["run_id"])
 
 
 def decision_view(client: Any, session_id: str, view: Json) -> None:

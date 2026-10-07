@@ -29,6 +29,14 @@ def param(name: str) -> str | None:
     return st.query_params.get(name)
 
 
+def go(page: str, **params: str) -> None:
+    """Open another page; the ids it needs travel in the URL, so a reload keeps them."""
+    set_param("page", page)
+    for name, value in params.items():
+        set_param(name, value)
+    st.rerun()
+
+
 def set_param(name: str, value: str | None) -> None:
     if value is None:
         st.query_params.pop(name, None)

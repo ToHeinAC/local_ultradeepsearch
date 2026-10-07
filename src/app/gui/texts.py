@@ -65,3 +65,26 @@ STALE = "Das Briefing hat sich geändert. Die Seite wurde neu geladen; bitte ern
 SAVED = "Entwurf gespeichert: {path}"
 APPROVED = "Freigegeben: Lauf {run_id}."
 TO_PLAN = "Zum Suchplan"
+
+# ---- Suchplan -------------------------------------------------------------------------------
+NO_PLAN_RUNS = "Kein Lauf wartet auf die Freigabe eines Suchplans."
+OPEN = "Öffnen"
+PLAN_NONE = "Zu diesem Lauf gibt es noch keinen Suchplan."
+PLAN_CLOSED = "Der Plan ist nicht zur Freigabe offen (Status: {status}); er wird nur angezeigt."
+PLAN_BLOCKED = "{id}: {query} - gesperrt ({reason})"
+PLAN_HELP = (
+    "Anfragen bearbeiten, Zeilen löschen oder neue ergänzen (Spalte `id` leer lassen). "
+    "Geänderte Anfragen werden erneut geprüft (Denylist, Bereinigung)."
+)
+PLAN_CHECK = "Änderungen prüfen"
+PLAN_STALE = "Der Plan hat sich geändert. Er wurde neu geladen; bitte erneut prüfen."
+PLAN_COLUMNS = {
+    "id": "id",
+    "item": "Punkt",
+    "lens": "Linse",
+    "kind": "Art",
+    "original": "Anfrage",
+    "sent": "Gesendet",
+    "removed": "Entfernt",
+    "blocked": "Gesperrt",
+}

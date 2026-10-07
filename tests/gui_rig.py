@@ -15,7 +15,14 @@ class FakeApi:
     """Records every call as (name, args); answers with ``data[name]`` or an empty dict."""
 
     def __init__(self, **data: Any) -> None:
-        self.data: dict[str, Any] = {"health": {"api": "ok", "worker_lock": "free", "queued": 0}}
+        self.data: dict[str, Any] = {
+            "health": {"api": "ok", "worker_lock": "free", "queued": 0},
+            "list_sessions": [],
+            "run_summaries": [],
+            "templates": [],
+            "run_summary": {"title": None, "status": "done"},
+            "get_plan": {"plan": None, "plan_sha256": None, "text": ""},
+        }
         self.data.update(data)
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self.down = False

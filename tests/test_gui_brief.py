@@ -72,7 +72,7 @@ TEMPLATES = [
 
 
 def app(api: FakeApi, **query: str) -> AppTest:
-    api.data.setdefault("templates", TEMPLATES)
+    api.data["templates"] = api.data["templates"] or TEMPLATES
     return run_app(api, **{"session": "s1", **query})
 
 

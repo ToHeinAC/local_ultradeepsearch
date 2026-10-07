@@ -7,17 +7,9 @@ import streamlit as st
 from app.client import ApiDown
 from app.gui import texts
 from app.gui.pages.brief_decision import decision_view
-from app.gui.state import POLL_SECONDS, param, set_param
+from app.gui.state import POLL_SECONDS, go, param, set_param
 
 Json = dict[str, Any]
-
-
-def go(page: str, **params: str) -> None:
-    """Open another page; the ids it needs travel in the URL, so a reload keeps them."""
-    set_param("page", page)
-    for name, value in params.items():
-        set_param(name, value)
-    st.rerun()
 
 
 def render(client: Any) -> None:
