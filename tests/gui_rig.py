@@ -20,6 +20,8 @@ class FakeApi:
             "list_sessions": [],
             "run_summaries": [],
             "templates": [],
+            "report": b"# Bericht",
+            "gate": {"passed": True, "failed": []},
             "run_summary": {"title": None, "status": "done"},
             "get_plan": {"plan": None, "plan_sha256": None, "text": ""},
         }
