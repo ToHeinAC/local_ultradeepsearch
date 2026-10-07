@@ -71,6 +71,7 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("OPENALEX_API_KEY", "openalex_api_key")
     )
     tavily_monthly_limit: int = Field(default=1000, ge=0)
+    searxng_url: str | None = None  # our own SearXNG (`deploy/searxng/`); first in the web chain
     internal_domains: Annotated[tuple[str, ...], NoDecode] = ()
     fetch_timeout_s: float = Field(default=30.0, gt=0)
     max_html_mb: float = Field(default=10.0, gt=0)
@@ -82,6 +83,13 @@ class Settings(BaseSettings):
         if not is_loopback_url(url):
             raise ValueError(f"Ollama URL must be a loopback http(s) URL, got {url!r}")
         return url
+
+    @field_validator("searxng_url")
+    @classmethod
+    def _searxng_loopback(cls, url: str | None) -> str | None:
+        if url and not is_loopback_url(url):
+            raise ValueError(f"SearXNG URL must be a loopback http(s) URL, got {url!r}")
+        return url or None
 
     @field_validator("internal_domains", mode="before")
     @classmethod

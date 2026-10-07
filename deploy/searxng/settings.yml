@@ -1,0 +1,25 @@
+# Minimal SearXNG settings for udr: JSON output on, limiter off (loopback, one user), a curated
+# set of general engines. The secret key comes from the SEARXNG_SECRET environment variable.
+use_default_settings:
+  engines:
+    keep_only:
+      - google
+      - bing
+      - duckduckgo
+      - brave
+      - startpage
+      - qwant
+      - mojeek
+      - wikipedia
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 10.0

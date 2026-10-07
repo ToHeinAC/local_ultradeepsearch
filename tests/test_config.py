@@ -162,3 +162,10 @@ def test_conftest_scrubs_provider_secrets() -> None:
 
 def test_the_api_port_defaults_to_8541() -> None:
     assert make().api_port == 8541
+
+
+def test_searxng_is_off_by_default_and_loopback_only() -> None:
+    assert make().searxng_url is None
+    assert make(searxng_url="http://127.0.0.1:8888").searxng_url == "http://127.0.0.1:8888"
+    with pytest.raises(ValidationError, match="loopback"):
+        make(searxng_url="http://searx.example.com")
