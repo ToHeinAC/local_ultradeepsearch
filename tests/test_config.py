@@ -169,3 +169,11 @@ def test_searxng_is_off_by_default_and_loopback_only() -> None:
     assert make(searxng_url="http://127.0.0.1:8888").searxng_url == "http://127.0.0.1:8888"
     with pytest.raises(ValidationError, match="loopback"):
         make(searxng_url="http://searx.example.com")
+
+
+def test_the_gui_settings_default_to_the_prd_ports_and_stay_on_loopback() -> None:
+    s = make()
+    assert (s.api_url, s.gui_port, s.gui_api_key) == ("http://127.0.0.1:8541", 8540, None)
+    assert make(gui_api_key="udr_abc").gui_api_key.get_secret_value() == "udr_abc"  # type: ignore[union-attr]
+    with pytest.raises(ValidationError, match="loopback"):
+        make(api_url="http://api.example.com:8541")

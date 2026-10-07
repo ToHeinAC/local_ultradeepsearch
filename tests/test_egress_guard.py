@@ -21,7 +21,7 @@ NETWORK_MODULES = (
     "primp",
     "ollama",
 )
-ALLOWED = ("app/adapters/outbound/", "app/adapters/ollama_transport.py")
+ALLOWED = ("app/adapters/outbound/", "app/adapters/ollama_transport.py", "app/client.py")
 
 
 def _is_network(name: str) -> bool:
@@ -78,7 +78,10 @@ def test_detector_flags_a_violating_module(tmp_path: Path) -> None:
     (tmp_path / "app" / "llm" / "leak.py").write_text("import httpx\n")
     (tmp_path / "app" / "adapters" / "outbound" / "ok.py").write_text("import httpx\n")
     (tmp_path / "app" / "adapters" / "ollama_transport.py").write_text("import ollama\n")
-    assert violations(tmp_path) == {"app/llm/leak.py": ["httpx"]}
+    (tmp_path / "app" / "client.py").write_text("import httpx\n")  # the GUI's loopback client
+    (tmp_path / "app" / "gui").mkdir()
+    (tmp_path / "app" / "gui" / "leak.py").write_text("import httpx\n")
+    assert violations(tmp_path) == {"app/gui/leak.py": ["httpx"], "app/llm/leak.py": ["httpx"]}
 
 
 def test_only_the_gateway_reaches_the_network() -> None:

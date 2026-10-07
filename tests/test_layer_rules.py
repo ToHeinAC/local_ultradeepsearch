@@ -1,5 +1,6 @@
-"""AGENTS.md section 5.2: LangGraph is imported only in `src/app/graphs/`, and the web stack
-(`fastapi`, `starlette`, `uvicorn`, `mcp`) only in `src/app/api/`."""
+"""AGENTS.md section 5.2: LangGraph is imported only in `src/app/graphs/`, the web stack
+(`fastapi`, `starlette`, `uvicorn`, `mcp`) only in `src/app/api/`, `streamlit` only in
+`src/app/gui/`, and `src/app/gui/` imports from `app` only the API client (PRD M7 AC1)."""
 
 import ast
 from pathlib import Path
@@ -110,3 +111,88 @@ def test_web_detector_flags_a_module_outside_the_api_package(tmp_path: Path) -> 
 
 def test_only_the_api_package_imports_the_web_stack() -> None:
     assert web_violations() == {}
+
+
+GUI = "app/gui/"
+GUI_ALLOWED_APP = ("app.client", "app.gui")
+
+
+def streamlit_imports(source: str) -> list[str]:
+    return imports_of(source, frozenset({"streamlit"}))
+
+
+def gui_app_imports(source: str) -> list[str]:
+    """The `app` modules ``source`` imports that a GUI module may not (anything but the client
+    and the GUI's own modules). A relative import above the package counts as one."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found |= {a.name for a in node.names if _forbidden_for_gui(a.name)}
+        elif isinstance(node, ast.ImportFrom):
+            found |= _forbidden_from(node)
+    return sorted(found)
+
+
+def _forbidden_for_gui(name: str) -> bool:
+    if name != "app" and not name.startswith("app."):
+        return False
+    return not any(name == ok or name.startswith(f"{ok}.") for ok in GUI_ALLOWED_APP)
+
+
+def _forbidden_from(node: ast.ImportFrom) -> set[str]:
+    if node.level > 1:
+        return {"." * node.level + (node.module or "")}
+    if node.level == 1 or node.module is None:
+        return set()
+    if node.module == "app":  # `from app import client` names the module in the alias
+        return {f"app.{a.name}" for a in node.names if _forbidden_for_gui(f"app.{a.name}")}
+    return {node.module} if _forbidden_for_gui(node.module) else set()
+
+
+def gui_violations(root: Path = SRC) -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        source = path.read_text("utf-8")
+        if not relative.startswith(GUI) and (bad := streamlit_imports(source)):
+            found[relative] = bad
+        if relative.startswith(GUI) and (bad := gui_app_imports(source)):
+            found[relative] = bad
+    return found
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from app.client import ApiClient\n", []),
+        ("from app import client\n", []),
+        ("from app.gui import texts\n", []),
+        ("from . import texts\n", []),
+        ("import streamlit as st\n", []),
+        ("import json\nfrom pathlib import Path\n", []),
+        ("from app.store.vault import Vault\n", ["app.store.vault"]),
+        ("import app.graphs.brief\n", ["app.graphs.brief"]),
+        ("from app.adapters.outbound import gateway\n", ["app.adapters.outbound"]),
+        ("from app import bootstrap\n", ["app.bootstrap"]),
+        ("from app.pipeline.fetch import FetchPipeline\n", ["app.pipeline.fetch"]),
+        ("from .. import config\n", [".."]),
+        ("from app.clientele import x\n", ["app.clientele"]),  # not the client
+    ],
+)
+def test_gui_detector(source: str, expected: list[str]) -> None:
+    assert gui_app_imports(source) == expected
+
+
+def test_gui_rules_flag_a_leak_in_both_directions(tmp_path: Path) -> None:
+    (tmp_path / "app" / "gui").mkdir(parents=True)
+    (tmp_path / "app" / "gui" / "ok.py").write_text("import streamlit\nfrom app.client import C\n")
+    (tmp_path / "app" / "gui" / "leak.py").write_text("from app.store.runs import RunStore\n")
+    (tmp_path / "app" / "cli.py").write_text("import streamlit\n")
+    assert gui_violations(tmp_path) == {
+        "app/cli.py": ["streamlit"],
+        "app/gui/leak.py": ["app.store.runs"],
+    }
+
+
+def test_only_the_gui_imports_streamlit_and_it_imports_only_the_client() -> None:
+    assert gui_violations() == {}

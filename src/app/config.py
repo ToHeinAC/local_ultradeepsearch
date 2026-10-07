@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     num_ctx_ocr: int = Field(default=8192, ge=1024)
 
     api_port: int = Field(default=8541, ge=1, le=65535)  # `udr serve`; it binds to 127.0.0.1 only
+    api_url: str = "http://127.0.0.1:8541"  # what the GUI talks to; loopback only
+    gui_port: int = Field(default=8540, ge=1, le=65535)  # `udr gui`; it binds to 127.0.0.1 only
+    gui_api_key: SecretStr | None = None  # a self-approve key (`udr apikey create`)
 
     llm_timeout_s: float = Field(default=900.0, gt=0)
     min_free_disk_gb: float = Field(default=20.0, ge=0)
@@ -82,6 +85,13 @@ class Settings(BaseSettings):
     def _loopback_only(cls, url: str) -> str:
         if not is_loopback_url(url):
             raise ValueError(f"Ollama URL must be a loopback http(s) URL, got {url!r}")
+        return url
+
+    @field_validator("api_url")
+    @classmethod
+    def _api_loopback(cls, url: str) -> str:
+        if not is_loopback_url(url):
+            raise ValueError(f"API URL must be a loopback http(s) URL, got {url!r}")
         return url
 
     @field_validator("searxng_url")
