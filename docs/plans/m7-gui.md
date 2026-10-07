@@ -1,6 +1,6 @@
 # M7 implementation plan — GUI (Streamlit, German) and SearXNG search
 
-**Status:** draft; D1–D11 decided by the owner on 2026-10-07, A1–A8 adopted (challenge if wrong).
+**Status:** in progress; D1–D11 decided by the owner on 2026-10-07, A1–A8 adopted (challenge if wrong).
 **Executor:** Sonnet 5.5. Follow [AGENTS.md](../../AGENTS.md) for every step: red → green → gate →
 commit (one commit per step, imperative message). Push only when the owner asks. Report the red and
 the green result of every step in its commit message body.

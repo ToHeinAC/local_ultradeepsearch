@@ -149,4 +149,5 @@ license compatible with Apache-2.0 (MIT, BSD, ISC, PSF, Apache-2.0). Record copi
 THIRD_PARTY_NOTICES.md. Accepted by the owner: the transitive, unmodified MPL dependencies `tld`
 (via trafilatura) and `certifi` (via httpx) on 2026-10-01, `orjson` (via langgraph) on
 2026-10-02, and `pillow` (MIT-CMU, a permissive HPND-style licence, via reportlab) on 2026-10-04.
-Any further exception needs the owner's approval.
+SearXNG (AGPL-3.0) is accepted as an unmodified external service over HTTP, on 2026-10-07; it is
+never vendored or imported. Any further exception needs the owner's approval.

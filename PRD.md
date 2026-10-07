@@ -134,8 +134,8 @@ search queries.
 
 - **Search order per atomic item:**
   1. Scholarly APIs: OpenAlex, Crossref, and arXiv for STEM.
-  2. Tavily Search (`basic`, `max_results=10`).
-  3. `ddgs` as fallback.
+  2. Web search: SearXNG (optional, `UDR_SEARXNG_URL`, loopback), then Tavily Search (`basic`,
+     `max_results=10`), then `ddgs`. A query falls through on an error or 0 hits.
 - **Fetch order** *(adopted)*:
   1. Local first: `httpx` with a 30 s timeout, 10 MB HTML / 25 MB PDF caps, 1 req/s per host, and
      a User-Agent without a URL. trafilatura extracts HTML, pypdfium2 extracts PDFs.
@@ -168,6 +168,7 @@ search queries.
   recorded in IMPLEMENTATION.md.
 - **Config.** Env via pydantic-settings. Secrets only in `.env`: `TAVILY_API_KEY`,
   `OPENALEX_MAILTO`, optional `OPENALEX_API_KEY`, `UDR_GUI_API_KEY`. `.env.example` lists the keys.
+  Loopback URLs: `UDR_SEARXNG_URL`, `UDR_API_URL`; `UDR_GUI_PORT`.
 - **Runtime data** lives in `data/` (gitignored):
   - `udr.sqlite`, `checkpoints.sqlite`, `calibration.json`, `denylist.txt`;
   - `runs/<run_id>/`, `briefs/`, `uploads/<session_id>/`, `templates/`, `backups/`.
@@ -624,21 +625,21 @@ the report and exports stay downloadable, marked "nicht bestanden".
 - **Dependencies:** M4, M5.
 
 ### M7 — GUI (Streamlit, German)
-- **Deliverable:** Streamlit on `127.0.0.1:8540` as a pure API client, using `UDR_GUI_API_KEY`
-  (a self-approve key). Pages:
+- **Deliverable:** `udr gui`: Streamlit on `127.0.0.1:8540` as a pure client (`src/app/client.py`)
+  of `UDR_API_URL`, using `UDR_GUI_API_KEY`. The API gains what the pages need (session list and
+  retry, doctor, run summaries, per-run `tavily_cap`). Pages:
   - **Neue Recherche:**
     - question, uploads, rounds with editable candidate answers, checklist status, "genug";
-    - settings: Lite/Full with recommendation and rationale; template select/preview/upload;
-      report language; response format; e4b/e2b; Tavily run budget;
+    - settings: Lite (Full disabled until M8) with recommendation and rationale; template select/preview/upload;
+      report language; response format; e4b/e2b; Tavily run cap (at most the tier's);
     - the exact brief text, with Freigeben / Überarbeiten / Speichern.
   - **Suchplan:** query table per atomic item (provider, sanitized text, removed terms). Queries
     can be edited, deleted or added; denylist hits are highlighted; Freigeben.
   - **Läufe:** history; the tier's step timeline (current step, sources, credits run/month,
-    elapsed time, warnings); outbound log; cancel/resume/delete; pending approvals from other keys.
+    elapsed time, warnings); outbound log; cancel/resume/delete; pending sessions and runs of other keys.
   - **Bericht:** rendered report, gate result, MD/DOCX/PDF downloads.
   - **Einstellungen:** denylist editor, doctor status, read-only role→model map.
-  - **Safe exit:** SIGTERM to its own PID only (`safe_exit_app` pattern). It never touches the API
-    or the worker.
+  - **Safe exit:** SIGTERM to its own PID only (`safe_exit_app`); never the API or the worker.
 - **Acceptance criteria:**
   1. An import-scan test proves that `src/app/gui/**` imports no graph, adapter, pipeline or
      store module.
@@ -648,9 +649,8 @@ the report and exports stay downloadable, marked "nicht bestanden".
   4. Progress polls at most every 5 s. If the fake API is down, a banner appears; nothing crashes.
   5. A browser reload restores the session or run from the query parameters.
 - **Edge cases:**
-  - API unreachable at start: banner plus retry.
+  - API unreachable at start: banner plus retry. Upload errors: shown per file.
   - Report over 100k chars: collapsible sections.
-  - Upload errors: shown per file.
 - **Dependencies:** M6.
 
 ### M8 — Full tier: analysis steps 3–9 (plus 2.3 and 2.6)

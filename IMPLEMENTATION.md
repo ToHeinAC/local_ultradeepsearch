@@ -31,7 +31,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. live: `tests/live/test_live_brief.py` ran, see §4 |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | done | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); live AC8: a German Lite run passed the gate in 52 min, see §4 |
 | 6 | M6: Service — REST, MCP, worker ([plan](docs/plans/m6-service.md)) | done | offline: AC1–AC7 in `test_api_auth.py`, `test_api_rest.py`, `test_worker.py`, `test_worker_crash.py` (real SIGKILL), `test_api_mcp.py`, `test_api_openapi.py`; live: a whole Lite run through REST and the worker in 36 min, see §4 |
-| 7 | M7: GUI (Streamlit, German) | planned | import scan, AppTest, safe-exit tests |
+| 7 | M7: GUI (Streamlit, German) and SearXNG search ([plan](docs/plans/m7-gui.md)) | in progress | import scan, AppTest, safe-exit tests |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
 | 9 | M9: Full tier — drafting and review, calibration | planned | full step-sequence, patch-engine tests; live Full run |
 | 10 | M10: Operations | planned | backup/restore test; manual reboot and bind checks |
