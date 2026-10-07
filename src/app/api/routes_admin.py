@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from app.api.facade import Facade
 from app.api.keys import ApiKey
 from app.api.schemas import DenylistIO, HealthOut, TemplateOut
+from app.api.summary import RunSummary
 from app.templates import ReportTemplate
 
 
@@ -43,6 +44,14 @@ def admin_router(facade: Facade, auth: Callable[..., ApiKey]) -> APIRouter:
     @router.put("/denylist")
     def put_denylist(body: DenylistIO, key: ApiKey = Depends(auth)) -> DenylistIO:
         return DenylistIO(terms=list(facade.put_denylist(key, body.terms)))
+
+    @router.get("/run-summaries")
+    def run_summaries(key: ApiKey = Depends(auth)) -> list[RunSummary]:
+        return facade.run_summaries(key)
+
+    @router.get("/doctor")
+    def doctor(key: ApiKey = Depends(auth)) -> dict[str, Any]:
+        return facade.doctor(key)
 
     @router.get("/health")
     def health(key: ApiKey = Depends(auth)) -> HealthOut:

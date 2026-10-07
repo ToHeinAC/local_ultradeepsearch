@@ -283,3 +283,28 @@ def test_the_tavily_cap_is_validated_by_the_schema_and_by_the_tier(client: TestC
     assert client.post("/v1/runs", json={**body, "tavily_cap": -1}).status_code == 422
     assert client.post("/v1/runs", json={**body, "tavily_cap": 61}).status_code == 422
     assert client.post("/v1/runs", json={**body, "tavily_cap": 10}).status_code == 201
+
+
+def test_the_session_list_and_the_retry_route(api: ApiRig, client: TestClient) -> None:
+    sid = client.post("/v1/sessions", data={"question": QUESTION}).json()["session_id"]
+    api.jobs.wait_idle()
+    rows = client.get("/v1/sessions").json()
+    assert [(r["session_id"], r["status"], r["created_by"]) for r in rows] == [
+        (sid, "interviewing", "owner")
+    ]
+    assert client.post(f"/v1/sessions/{sid}/retry").status_code == 202
+    assert client.post("/v1/sessions/s-nope/retry").status_code == 404
+
+
+def test_run_summaries_over_http(client: TestClient) -> None:
+    run_id = create_run(client)
+    listed = client.get("/v1/run-summaries").json()
+    assert [r["run_id"] for r in listed] == [run_id]
+    one = client.get(f"/v1/runs/{run_id}/summary").json()
+    assert (one["status"], one["created_by"], one["credit_cap"]) == ("queued", "owner", 60)
+    assert client.get("/v1/runs/r-nope/summary").status_code == 404
+
+
+def test_doctor_over_http(client: TestClient) -> None:
+    body = client.get("/v1/doctor").json()
+    assert {"checks", "roles"} <= set(body)

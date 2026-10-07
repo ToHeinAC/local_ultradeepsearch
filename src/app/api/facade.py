@@ -6,16 +6,26 @@ created by a key without `self_approve` waits until a key with it approves it.
 """
 
 import dataclasses
-from collections.abc import Sequence
+import json
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from pydantic import SecretStr
 
 from app.adapters.outbound.denylist import Denylist
+from app.adapters.outbound.ledger import MonthLedger
+from app.adapters.outbound.log import OutboundLog
 from app.api.errors import Forbidden
 from app.api.jobs import SessionJobs
-from app.api.keys import ApiKey
+from app.api.keys import ApiKey, KeyStore
+from app.api.summary import (
+    RunSummary,
+    SessionSummary,
+    elapsed_seconds,
+    step_spans,
+    title_of,
+)
 from app.brief.errors import InvalidInput, WrongState
 from app.brief.protocol import AnswerInput
 from app.brief.service import BriefService, SessionView, Tier
@@ -23,6 +33,7 @@ from app.brief.uploads import UploadFile
 from app.config import Settings
 from app.events import read_run_events
 from app.pipeline.profiles import load_profile
+from app.research.manifest import read_run_json
 from app.research.service import ResearchService, RunView, TierNotAvailable
 from app.templates import ReportTemplate, TemplateError, parse_template
 
@@ -49,7 +60,14 @@ class Facade:
         settings: Settings,
         templates: dict[str, ReportTemplate],
         denylist_path: Path,
+        *,
+        keys: KeyStore,
+        month: MonthLedger,
+        doctor: Callable[[], dict[str, Any]],
     ) -> None:
+        self._keys = keys
+        self._month = month
+        self._doctor = doctor
         self._briefs = briefs
         self._research = research
         self._jobs = jobs
@@ -68,6 +86,28 @@ class Facade:
         self, key: ApiKey, question: str, files: Sequence[UploadFile] = ()
     ) -> SessionView:
         return self._shown(self._briefs.start(question, files, created_by=key.key_id))
+
+    def list_sessions(self, key: ApiKey) -> list[SessionSummary]:
+        names = self._key_names()
+        return [
+            SessionSummary(
+                session_id=row.session_id,
+                status=row.status,
+                title=title_of(row.brief_text),
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                created_by=names.get(row.created_by or "", row.created_by),
+                run_id=row.run_id,
+            )
+            for row in self._briefs.list_sessions()
+        ]
+
+    def retry_session(self, key: ApiKey, session_id: str) -> SessionView:
+        """Continue a session that stopped on a model error (background; poll the session)."""
+        return self._shown(self._briefs.retry(session_id))
+
+    def _key_names(self) -> dict[str, str]:
+        return {k.key_id: k.name for k in self._keys.list()}
 
     def add_uploads(self, key: ApiKey, session_id: str, files: Sequence[UploadFile]) -> SessionView:
         return self._shown(self._briefs.add_files(session_id, files))
@@ -178,6 +218,59 @@ class Facade:
             created_by=key.key_id,
             tavily_cap=tavily_cap,
         )
+
+    def run_summary(self, key: ApiKey, run_id: str) -> RunSummary:
+        return self._summarize(run_id, self._key_names())
+
+    def run_summaries(self, key: ApiKey) -> list[RunSummary]:
+        names = self._key_names()
+        return [self._summarize(row.run_id, names) for row in self._research.rows()]
+
+    def _summarize(self, run_id: str, names: dict[str, str]) -> RunSummary:
+        view = self._research.view(run_id)
+        row = self._research.row(run_id)
+        run_dir = self._research.run_dir(run_id)
+        data = read_run_json(run_dir)
+        spans = step_spans(data.get("steps", []))
+        started = spans[0].started_at if spans else None
+        over = row.status in ("done", "blocked", "failed", "cancelled")
+        last = spans[-1] if spans else None
+        ended = (last.ended_at or last.started_at) if over and last else None
+        brief = Path(row.brief_path).read_text(encoding="utf-8") if row.brief_path else None
+        notes = data.get("stats", {}).get("notes_by_kind", {})
+        return RunSummary(
+            run_id=run_id,
+            status=row.status,
+            tier=view.tier,
+            waiting_for=view.waiting_for,
+            title=title_of(brief),
+            brief_sha256=row.brief_sha256,
+            created_at=row.created_at,
+            created_by=names.get(row.created_by or "", row.created_by),
+            started_at=started,
+            ended_at=ended,
+            elapsed_s=elapsed_seconds(started, ended),
+            step=view.step,
+            steps=spans,
+            credits_run=OutboundLog(run_dir / "outbound.jsonl").total_credits(),
+            credit_cap=self._credit_cap(row.settings_json, view.tier),
+            credits_month=self._month.used(),
+            month_limit=self._month.limit,
+            sources=notes.get("source") if "source" in notes else None,
+            warnings=sum(
+                1 for e in read_run_events(run_dir, 0)[0] if e.get("level") in ("warning", "error")
+            ),
+        )
+
+    def _credit_cap(self, settings_json: str | None, tier: str) -> int:
+        chosen = json.loads(settings_json).get("tavily_cap") if settings_json else None
+        if chosen is not None:
+            return int(chosen)
+        return load_profile(tier, self._settings.config_dir).credit_cap
+
+    def doctor(self, key: ApiKey) -> dict[str, Any]:
+        """The doctor's checks and the role to model map (read only)."""
+        return self._doctor()
 
     def list_runs(self, key: ApiKey) -> list[RunView]:
         return self._research.list_runs()

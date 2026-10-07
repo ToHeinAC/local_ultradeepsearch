@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.adapters.ollama_instance import (
     InstanceProbe,
@@ -40,7 +40,7 @@ from app.brief.service import Background, BriefService, ServiceDeps
 from app.brief.uploads import UploadIngestor
 from app.calibration import Calibration, calibration_for, load_calibration, run_calibration
 from app.config import Settings
-from app.doctor import DoctorSnapshot
+from app.doctor import DoctorSnapshot, evaluate
 from app.events import EventSink, RunScopedEventSink
 from app.graphs.brief import BriefDeps, BriefRunner, build_brief_graph, open_checkpointer
 from app.graphs.research import ResearchRunner, build_research_graph
@@ -147,6 +147,19 @@ def _own_loaded_vram(rt: Runtime) -> int:
         return 0
     loaded: list[LoadedModel] = rt.admin.ps(rt.urls[Endpoint.OWN]) or []
     return sum(m.size_vram for m in loaded)
+
+
+def doctor_report(rt: Runtime) -> dict[str, Any]:
+    """The doctor's checks and the role to model map as plain data (`GET /v1/doctor`). Read
+    only: it never starts a daemon."""
+    checks = evaluate(collect_snapshot(rt), rt.registry)
+    return {
+        "checks": [{"name": c.name, "level": c.level.value, "detail": c.detail} for c in checks],
+        "roles": [
+            {"role": role.value, "model": spec.model, "endpoint": spec.endpoint.value}
+            for role, spec in rt.registry.items()
+        ],
+    }
 
 
 def _searxng_answers(settings: Settings, http: HttpFactory) -> bool | None:

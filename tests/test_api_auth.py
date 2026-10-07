@@ -19,9 +19,12 @@ EXPECTED = {
     ("PUT", "/v1/sessions/{session_id}/brief"),
     ("POST", "/v1/sessions/{session_id}/approve"),
     ("POST", "/v1/sessions/{session_id}/save"),
+    ("GET", "/v1/sessions"),
+    ("POST", "/v1/sessions/{session_id}/retry"),
     ("POST", "/v1/runs"),
     ("GET", "/v1/runs"),
     ("GET", "/v1/runs/{run_id}"),
+    ("GET", "/v1/runs/{run_id}/summary"),
     ("POST", "/v1/runs/{run_id}/approve"),
     ("GET", "/v1/runs/{run_id}/events"),
     ("GET", "/v1/runs/{run_id}/stream"),
@@ -40,6 +43,8 @@ EXPECTED = {
     ("PUT", "/v1/denylist"),
     ("GET", "/v1/health"),
     ("GET", "/v1/config"),
+    ("GET", "/v1/run-summaries"),
+    ("GET", "/v1/doctor"),
 }
 
 

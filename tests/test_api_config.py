@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
-from api_rig import make_api_rig
+from api_rig import fake_doctor, make_api_rig
 from fastapi.testclient import TestClient
 from support import make_settings
 
+from app.adapters.outbound.ledger import MonthLedger
 from app.api.facade import Facade
 from app.api.rest import build_app
 
@@ -22,6 +23,9 @@ def test_the_config_endpoint_does_not_contain_a_secret(tmp_path: Path) -> None:
         settings,
         api.templates,
         tmp_path / "d.txt",
+        keys=api.keys,
+        month=MonthLedger(tmp_path / "ledger.json", 1000),
+        doctor=fake_doctor,
     )
     client = TestClient(build_app(facade, api.keys))
     response = client.get("/v1/config", headers={"Authorization": f"Bearer {api.owner_text}"})

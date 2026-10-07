@@ -347,6 +347,16 @@ class ResearchService:
         """Runs that wait for the worker (`queued`)."""
         return sum(1 for row in self._d.runs.list_runs(limit=10_000) if row.status == "queued")
 
+    def row(self, run_id: str) -> RunRow:
+        """The stored row of a run (`NotFound` for an unknown id)."""
+        return self._row(run_id)
+
+    def rows(self, limit: int = 100) -> list[RunRow]:
+        return self._d.runs.list_runs(limit)
+
+    def run_dir(self, run_id: str) -> Path:
+        return self._d.contexts(run_id).run_dir
+
     def view(self, run_id: str) -> RunView:
         row = self._row(run_id)
         run_dir = self._d.contexts(run_id).run_dir

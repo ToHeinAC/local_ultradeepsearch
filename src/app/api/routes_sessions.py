@@ -16,6 +16,7 @@ from app.api.schemas import (
     SettingsIn,
     TextIn,
 )
+from app.api.summary import SessionSummary
 from app.brief.service import SessionView
 from app.brief.uploads import UploadFile as Upload
 
@@ -32,6 +33,13 @@ def sessions_router(facade: Facade, auth: Callable[..., ApiKey]) -> APIRouter:
 
 
 def _interview_routes(router: APIRouter, facade: Facade, auth: Callable[..., ApiKey]) -> None:
+    @router.get("")
+    def list_sessions(key: ApiKey = Depends(auth)) -> list[SessionSummary]:
+        return facade.list_sessions(key)
+
+    @router.post("/{session_id}/retry", status_code=202)
+    def retry(session_id: str, key: ApiKey = Depends(auth)) -> SessionView:
+        return facade.retry_session(key, session_id)
 
     @router.post("", status_code=202)
     def start(

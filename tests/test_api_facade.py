@@ -5,13 +5,15 @@ import json
 from pathlib import Path
 
 import pytest
-from api_rig import ApiRig, make_api_rig
+from api_rig import ApiRig, fake_doctor, make_api_rig
 from brief_rig import QUESTION, kinds
 from research_run_rig import RAW_BRIEF, TEMPLATE
 from support import make_settings
 
+from app.adapters.outbound.ledger import MonthLedger
 from app.api.errors import Forbidden
 from app.api.facade import Facade
+from app.api.keys import ApiKey
 from app.brief.errors import InvalidInput, NotFound, StaleBrief, WrongState
 from app.brief.service import SessionView
 from app.research.service import TierNotAvailable
@@ -260,6 +262,9 @@ def test_the_config_hides_secrets(tmp_path: Path) -> None:
         settings,
         api.templates,
         tmp_path / "d.txt",
+        keys=api.keys,
+        month=MonthLedger(tmp_path / "ledger.json", 1000),
+        doctor=fake_doctor,
     )
     shown = facade.config(api.owner)
     assert "geheim-123" not in repr(shown)
@@ -296,3 +301,76 @@ def test_a_session_started_over_the_api_records_its_key(api: ApiRig) -> None:
     sid = api.facade.start_session(api.agent, QUESTION).session_id
     api.jobs.wait_idle()
     assert api.briefs.parts.sessions.get(sid).created_by == api.agent.key_id  # type: ignore[union-attr]
+
+
+# ---- PRD M7 D1: run summaries, session list, doctor ---------------------------------------
+
+
+def finished(api: ApiRig, key: ApiKey) -> str:
+    run_id = api.facade.create_run(key, RAW_BRIEF, tier="light", template_id=TEMPLATE).run_id
+    if not key.self_approve:
+        row = api.research.runs.get_run(run_id)
+        assert row is not None
+        api.facade.approve_run(api.owner, run_id, str(row.brief_sha256))
+    api.research.service.run(run_id)
+    service = api.research.service
+    service.approve_and_run(run_id, str(service.view(run_id).plan_sha256))
+    return run_id
+
+
+def test_a_finished_run_summary_names_its_creator_steps_and_cap(api: ApiRig) -> None:
+    run_id = finished(api, api.agent)
+    summary = api.facade.run_summary(api.owner, run_id)
+    assert (summary.run_id, summary.status, summary.tier) == (run_id, "done", "light")
+    assert summary.title == "Wie lange dauert der Rückbau eines Forschungsreaktors?"
+    assert summary.created_by == "agent"
+    assert [s.step for s in summary.steps][:2] == ["0", "1"]
+    assert {s.status for s in summary.steps} == {"done"}
+    assert summary.started_at is not None
+    assert summary.ended_at is not None
+    assert summary.elapsed_s is not None
+    assert (summary.credits_run, summary.credit_cap) == (0, 60)
+    assert (summary.credits_month, summary.month_limit) == (
+        0,
+        api.facade.config(api.owner)["tavily_monthly_limit"],
+    )
+    assert summary.brief_sha256 is not None
+
+
+def test_a_waiting_run_has_no_end_and_the_runs_own_cap(api: ApiRig) -> None:
+    run_id = api.facade.create_run(
+        api.agent, RAW_BRIEF, tier="light", template_id=TEMPLATE, tavily_cap=5
+    ).run_id
+    summary = api.facade.run_summary(api.agent, run_id)
+    assert (summary.status, summary.credit_cap) == ("awaiting_brief_approval", 5)
+    assert (summary.started_at, summary.ended_at, summary.elapsed_s) == (None, None, None)
+    assert summary.steps == ()
+
+
+def test_summaries_list_every_run_newest_first(api: ApiRig) -> None:
+    first = a_run(api)
+    second = a_run(api)
+    assert [s.run_id for s in api.facade.run_summaries(api.owner)] == [second, first]
+
+
+def test_the_session_list_names_the_key_and_the_brief_title(api: ApiRig) -> None:
+    sid = api.facade.start_session(api.agent, QUESTION).session_id
+    api.jobs.wait_idle()
+    (row,) = api.facade.list_sessions(api.owner)
+    assert (row.session_id, row.status, row.title, row.created_by) == (
+        sid,
+        "interviewing",
+        None,
+        "agent",
+    )
+    api.facade.send_message(api.agent, sid, answers=kinds("accept", "accept"))
+    api.jobs.wait_idle()
+    (row,) = api.facade.list_sessions(api.owner)
+    assert (row.status, row.created_by) == ("awaiting_decision", "agent")
+    assert row.title is not None
+
+
+def test_the_doctor_is_what_the_composition_reports(api: ApiRig) -> None:
+    report = api.facade.doctor(api.owner)
+    assert report["checks"][0]["name"] == "shared_endpoint"
+    assert report["roles"][0]["role"] == "reason"

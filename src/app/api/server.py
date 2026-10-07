@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from app import bootstrap
+from app.adapters.outbound.ledger import MonthLedger
 from app.api.facade import Facade
 from app.api.jobs import SessionJobs
 from app.api.keys import KeyStore
@@ -33,7 +34,17 @@ def build_service_app(rt: bootstrap.Runtime, *, recover: bool = False, **researc
     service = bootstrap.build_research_service(rt, templates=templates, **research)
     keys = KeyStore(Database(settings.data_dir / bootstrap.VAULT_FILE))
     facade = Facade(
-        briefs, service, jobs, settings, templates, settings.data_dir / bootstrap.DENYLIST_FILE
+        briefs,
+        service,
+        jobs,
+        settings,
+        templates,
+        settings.data_dir / bootstrap.DENYLIST_FILE,
+        keys=keys,
+        month=MonthLedger(
+            settings.data_dir / bootstrap.TAVILY_LEDGER_FILE, settings.tavily_monthly_limit
+        ),
+        doctor=lambda: bootstrap.doctor_report(rt),
     )
     if recover:
         threading.Thread(target=briefs.recover, name="recover-sessions", daemon=True).start()

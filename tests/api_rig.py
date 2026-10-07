@@ -3,6 +3,7 @@ data directory, for the facade, REST and MCP tests."""
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from brief_rig import Rig as BriefRig
 from brief_rig import rig as brief_rig
@@ -12,6 +13,7 @@ from research_rig import TEMPLATES
 from research_run_rig import RunRig, make_rig
 from support import make_settings
 
+from app.adapters.outbound.ledger import MonthLedger
 from app.api.facade import Facade
 from app.api.jobs import SessionJobs
 from app.api.keys import ApiKey, KeyStore
@@ -42,6 +44,13 @@ class ApiRig:
         return client
 
 
+def fake_doctor() -> dict[str, Any]:
+    return {
+        "checks": [{"name": "shared_endpoint", "level": "ok", "detail": "reachable"}],
+        "roles": [{"role": "reason", "model": "m", "endpoint": "own"}],
+    }
+
+
 def make_api_rig(base: Path) -> ApiRig:
     jobs = SessionJobs(threads=2)
     briefs = brief_rig(base / "brief", background=jobs.submit)
@@ -49,10 +58,18 @@ def make_api_rig(base: Path) -> ApiRig:
     research = make_rig(base / "research", templates=templates)
     data_dir = research.base  # the rig's files are the API's data directory
     settings = make_settings(data_dir=data_dir)
-    facade = Facade(
-        briefs.service, research.service, jobs, settings, templates, data_dir / "denylist.txt"
-    )
     keys = KeyStore(Database(base / "keys.sqlite"))
+    facade = Facade(
+        briefs.service,
+        research.service,
+        jobs,
+        settings,
+        templates,
+        data_dir / "denylist.txt",
+        keys=keys,
+        month=MonthLedger(data_dir / "tavily-ledger.json", settings.tavily_monthly_limit),
+        doctor=fake_doctor,
+    )
     owner, owner_text = keys.create("owner", self_approve=True)
     agent, agent_text = keys.create("agent", self_approve=False)
     return ApiRig(

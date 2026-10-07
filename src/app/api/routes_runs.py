@@ -20,6 +20,7 @@ from app.api.schemas import (
     RunCreateIn,
     TextIn,
 )
+from app.api.summary import RunSummary
 from app.research.service import RunView
 
 FINAL_STATUSES = ("done", "blocked", "failed", "cancelled")
@@ -98,6 +99,10 @@ def _watch_routes(
     @router.get("")
     def list_runs(key: ApiKey = Depends(auth)) -> list[RunView]:
         return facade.list_runs(key)
+
+    @router.get("/{run_id}/summary")
+    def run_summary(run_id: str, key: ApiKey = Depends(auth)) -> RunSummary:
+        return facade.run_summary(key, run_id)
 
     @router.get("/{run_id}")
     def get(run_id: str, key: ApiKey = Depends(auth)) -> RunView:

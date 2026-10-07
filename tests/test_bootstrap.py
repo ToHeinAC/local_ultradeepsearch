@@ -387,3 +387,14 @@ def test_the_snapshot_probes_a_configured_searxng(tmp_path: Path) -> None:
     assert bootstrap.collect_snapshot(rt, http=factory).searxng_ok is True
     rt, _ = runtime(tmp_path, http=admin())
     assert bootstrap.collect_snapshot(rt).searxng_ok is None
+
+
+def test_the_doctor_report_lists_checks_and_the_role_map(tmp_path: Path) -> None:
+    rt, _ = runtime(tmp_path, http=admin())
+    report = bootstrap.doctor_report(rt)
+    assert report["checks"][0]["name"] == "shared_endpoint"
+    assert {"name", "level", "detail"} == set(report["checks"][0])
+    roles = {r["role"]: r for r in report["roles"]}
+    assert set(roles) == {"reason", "extract", "summarize", "ocr"}
+    assert roles["summarize"]["model"] == "gemma4:e4b"
+    assert roles["reason"]["endpoint"] in ("own", "shared")
