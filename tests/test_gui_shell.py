@@ -76,7 +76,9 @@ def test_the_exit_button_signals_only_this_process(monkeypatch: pytest.MonkeyPat
     at = run_app(api)
     next(b for b in at.sidebar.button if b.label == "Beenden").click().run()
     assert sent == [(os.getpid(), signal.SIGTERM)]
-    assert [n for n, _a, _k in api.calls if n not in ("health",)] == []  # the API is left alone
+    assert [
+        n for n, _a, _k in api.calls if n not in ("health", "list_sessions")
+    ] == []  # the API is left alone
 
 
 def test_a_missing_key_is_explained_in_german(monkeypatch: pytest.MonkeyPatch) -> None:
