@@ -15,7 +15,7 @@ from test_bootstrap import FakeHost, admin, settings
 from app import bootstrap
 from app.adapters.outbound.gateway import Document, FetchFailure, PreparedQuery
 from app.adapters.outbound.types import ScholarlyRecord, SearchHit
-from app.events import MemoryEventSink
+from app.events import MemoryEventSink, read_run_events
 from app.llm.fakes import CallbackTransport
 from app.llm.types import ChatReply, ChatRequest
 from app.pipeline.profiles import Profile
@@ -200,3 +200,49 @@ def test_a_runs_own_summarize_model_reaches_the_fetch_pipelines_extraction(
     fresh.approve_and_run(run_id, str(fresh.view(run_id).plan_sha256))
     assert isinstance(models, AllModels)
     assert models.pipeline_models["ChunkExtraction"] == {"x:e2b"}
+
+
+class SpyModels(AllModels):
+    """Records what `read_run_events` returns at each model call (the API reads the same way)."""
+
+    def __init__(self, run_dir: list[Path]) -> None:
+        super().__init__()
+        self._run_dir = run_dir
+        self.seen: list[int] = []  # events readable before each call
+
+    def __call__(self, request: ChatRequest) -> ChatReply | Exception:
+        if self._run_dir:
+            self.seen.append(len(read_run_events(self._run_dir[0], 0)[0]))
+        return super().__call__(request)
+
+
+def test_events_of_a_running_step_are_readable_before_the_step_ends(tmp_path: Path) -> None:
+    run_dir: list[Path] = []
+    models = SpyModels(run_dir)
+    rt = bootstrap.build_runtime(
+        settings(tmp_path),
+        MemoryEventSink(),
+        probe=FakeHost(),
+        admin=admin(),
+        transport=CallbackTransport(models),
+        env={},
+    )
+    gw = RunGateway()
+    service = bootstrap.build_research_service(
+        rt, gateway_factory=lambda _d, _b, _p: gw, pandoc=FakePandoc()
+    )
+    run_id = service.create_external_run(
+        RAW_BRIEF, tier="light", template_id=TEMPLATE, language="de"
+    ).run_id
+    run_dir.append(rt.settings.data_dir / "runs" / run_id)
+    service.run(run_id)
+    # M6 live issue: nothing was readable while step 1 ran its first, long model call. The step
+    # now announces itself, so the first call already finds an event, the next ones more.
+    assert models.seen[0] > 0, models.seen
+    assert models.seen[1] > models.seen[0], models.seen
+    events = read_run_events(run_dir[0], 0)[0]
+    assert all(e["data"]["run_id"] == run_id for e in events)
+    started = [e["data"]["step"] for e in events if e["type"] == "step_started"]
+    assert started[:2] == ["0", "1"]
+    finished = [e["data"]["step"] for e in events if e["type"] == "step_finished"]
+    assert finished[:2] == ["0", "1"]

@@ -100,8 +100,10 @@ class ResearchSteps:
         before the step begins."""
         check_stop(ctx.should_stop)
         if begin_step(ctx.run_dir, step, self._d.now()):
+            self._d.events.emit("step_started", step=step)
             work()
             finish_step(ctx.run_dir, step, self._d.now())
+            self._d.events.emit("step_finished", step=step)
 
     # ---- 0, 1: bootstrap and decomposition -----------------------------------------------
 
