@@ -4,6 +4,7 @@ It is an external service we run (`deploy/searxng/`), reached over HTTP like Oll
 URL is loopback by configuration. One attempt per call; the gateway decides what happens next.
 """
 
+from app.adapters.outbound.errors import ProviderError
 from app.adapters.outbound.http_util import as_dict, as_list, json_object, send
 from app.adapters.outbound.types import HttpFactory, SearchHit, default_http
 
@@ -40,3 +41,11 @@ class SearxngApi:
             if r.get("url")
         ]
         return hits[:max_results]
+
+    def healthy(self) -> bool:
+        """True when it answers a search with JSON (the doctor's probe; never raises)."""
+        try:
+            self.search("test", 1)
+        except ProviderError:
+            return False
+        return True

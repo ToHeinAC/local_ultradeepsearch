@@ -84,10 +84,11 @@ def runtime(
     probe: FakeHost | None = None,
     http: OllamaAdmin | None = None,
     script: list[ChatReply | Exception] | None = None,
+    searxng_url: str | None = None,
 ) -> tuple[bootstrap.Runtime, ScriptedTransport]:
     transport = ScriptedTransport(script or [reply("hello")])
     rt = bootstrap.build_runtime(
-        settings(tmp_path),
+        settings(tmp_path, searxng_url=searxng_url),
         MemoryEventSink(),
         probe=probe or FakeHost(),
         admin=http or admin(),
@@ -375,3 +376,14 @@ def test_a_session_through_the_composition_writes_the_documented_files(tmp_path:
     run = RunStore(Database(data / bootstrap.VAULT_FILE)).get_run(str(done.run_id))
     assert run is not None
     assert (run.tier, run.status, run.brief_sha256) == ("light", "queued", view.brief_sha256)
+
+
+def test_the_snapshot_probes_a_configured_searxng(tmp_path: Path) -> None:
+    def factory(timeout: float) -> httpx.Client:
+        handler = httpx.MockTransport(lambda r: httpx.Response(200, json={"results": []}))
+        return httpx.Client(transport=handler, timeout=timeout)
+
+    rt, _ = runtime(tmp_path, http=admin(), searxng_url="http://127.0.0.1:8888")
+    assert bootstrap.collect_snapshot(rt, http=factory).searxng_ok is True
+    rt, _ = runtime(tmp_path, http=admin())
+    assert bootstrap.collect_snapshot(rt).searxng_ok is None

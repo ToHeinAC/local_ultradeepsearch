@@ -25,11 +25,13 @@ from app.adapters.outbound.ledger import MonthLedger, RunLedger
 from app.adapters.outbound.log import OutboundLog
 from app.adapters.outbound.sanitizer import SanitizedQuery, SanitizerError
 from app.adapters.outbound.scholarly import ArxivApi, CrossrefApi, OpenAlexApi
+from app.adapters.outbound.searxng import SearxngApi
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.outbound.throttle import HostThrottle
 from app.events import MemoryEventSink
 
 TERM = "Müller-Werke"
+SEARX = "http://127.0.0.1:8888"
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 ARTICLE = (
     "<html><body><article>"
@@ -91,6 +93,12 @@ def tavily_ok(request: httpx.Request) -> httpx.Response:
     )
 
 
+def searx_ok(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200, json={"results": [{"title": "S", "url": "https://searx-hit.org/1", "content": "c"}]}
+    )
+
+
 def default_routes() -> dict[str, Route]:
     def openalex(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"results": [{"id": "W1", "display_name": "Paper"}]})
@@ -106,6 +114,7 @@ def default_routes() -> dict[str, Route]:
 
     return {
         "api.tavily.com": tavily_ok,
+        "127.0.0.1": searx_ok,
         "api.openalex.org": openalex,
         "api.crossref.org": crossref,
         "export.arxiv.org": arxiv,
@@ -115,7 +124,13 @@ def default_routes() -> dict[str, Route]:
 
 class Rig:
     def __init__(
-        self, tmp_path: Path, *, key: bool = True, cap: int = 300, month_limit: int = 1000
+        self,
+        tmp_path: Path,
+        *,
+        key: bool = True,
+        cap: int = 300,
+        month_limit: int = 1000,
+        searxng: bool = False,
     ) -> None:
         self.net = Net(routes=default_routes())
         self.ddgs_calls: list[str] = []
@@ -130,7 +145,7 @@ class Rig:
         self.run_ledger = RunLedger(cap)
         self.dns: dict[str, list[str]] = {}
         self.gateway = OutboundGateway(
-            providers=self._providers(key),
+            providers=self._providers(key, searxng),
             denylist=Denylist([TERM]),
             sanitizer=self.sanitizer,
             log=OutboundLog(self.log_path, now=lambda: NOW),
@@ -146,7 +161,7 @@ class Rig:
     def _http(self, timeout: float) -> httpx.Client:
         return httpx.Client(transport=httpx.MockTransport(self.net), timeout=timeout)
 
-    def _providers(self, key: bool) -> Providers:
+    def _providers(self, key: bool, searxng: bool = False) -> Providers:
         return Providers(
             tavily=TavilyApi("tvly-test", self._http, timeout_s=5) if key else None,
             ddgs=DdgsSearch(self._ddgs),
@@ -154,6 +169,7 @@ class Rig:
             crossref=CrossrefApi(self._http, timeout_s=5),
             arxiv=ArxivApi(self._http, timeout_s=5),
             http=HttpGetter(self._http, timeout_s=5, max_html_bytes=10_000, max_pdf_bytes=50_000),
+            searxng=SearxngApi(SEARX, self._http, timeout_s=5) if searxng else None,
         )
 
     def _ddgs(self, query: str, max_results: int) -> list[dict[str, Any]]:
@@ -604,3 +620,65 @@ def test_log_lines_are_complete_and_one_per_attempt(rig: Rig) -> None:
     assert len(lines) == 5
     assert all(set(line) == FIELDS for line in lines)
     assert len(rig.net.requests) == 4
+
+
+# ---- SearXNG first, then Tavily, then ddgs (PRD §3.3) -----------------------------------------
+
+
+def fallbacks(rig: Rig) -> list[dict[str, Any]]:
+    return [e.data for e in rig.events.of_type("search_fallback")]
+
+
+def test_searxng_answers_first_and_costs_no_credit(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, searxng=True)
+    hits = rig.gateway.search_web(q("heat pumps"), step="2")
+    assert [h.provider for h in hits] == ["searxng"]
+    assert rig.net.hosts() == ["127.0.0.1"]  # Tavily was not asked
+    assert rig.ddgs_calls == []
+    assert rig.run_ledger.used == 0
+    assert rig.switched() == []
+    assert fallbacks(rig) == []
+    (line,) = rig.log()
+    assert (line["provider"], line["status"], line["credits"]) == ("searxng_search", "200", 0)
+    assert line["sent_query"] == "heat pumps"
+
+
+@pytest.mark.parametrize(
+    ("route", "reason"),
+    [
+        (lambda r: httpx.Response(503, text="down"), "error"),
+        (lambda r: httpx.Response(403, text="json off"), "error"),
+        (lambda r: httpx.Response(200, json={"results": []}), "empty"),
+    ],
+)
+def test_searxng_failure_or_no_hits_falls_through_to_tavily(
+    tmp_path: Path, route: Route, reason: str
+) -> None:
+    rig = Rig(tmp_path, searxng=True)
+    rig.net.routes["127.0.0.1"] = route
+    hits = rig.gateway.search_web(q("a"), step="2")
+    assert [h.provider for h in hits] == ["tavily"]
+    assert fallbacks(rig) == [{"from": "searxng", "to": "tavily", "reason": reason}]
+    assert rig.run_ledger.used == 1
+
+
+def test_searxng_and_tavily_failing_leave_ddgs(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, searxng=True)
+    rig.net.routes["127.0.0.1"] = lambda r: httpx.Response(500, text="x")
+    rig.net.routes["api.tavily.com"] = lambda r: httpx.Response(503, text="down")
+    assert rig.gateway.search_web(q("a"), step="2")[0].provider == "ddgs"
+
+
+def test_without_tavily_searxng_falls_through_to_ddgs(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, key=False, searxng=True)
+    rig.net.routes["127.0.0.1"] = lambda r: httpx.Response(200, json={"results": []})
+    assert rig.gateway.search_web(q("a"), step="2")[0].provider == "ddgs"
+    assert fallbacks(rig) == [{"from": "searxng", "to": "ddgs", "reason": "empty"}]
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_searxng_never_sees_a_denylisted_term(tmp_path: Path, variant: str) -> None:
+    rig = Rig(tmp_path, searxng=True)
+    with pytest.raises(DenylistBlocked):
+        rig.gateway.search_web(q(f"costs of {variant}"), step="2")
+    assert rig.net.requests == []

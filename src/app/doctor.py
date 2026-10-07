@@ -43,6 +43,7 @@ class DoctorSnapshot:
     gpus: Sequence[Gpu] | None
     own_loaded_vram_bytes: int  # VRAM used by models loaded in our own instance
     calibration_ctx: int | None
+    searxng_ok: bool | None = None  # None: not configured; else whether it answered a search
 
 
 def _instance_is_up(snapshot: DoctorSnapshot) -> bool:
@@ -128,6 +129,15 @@ def _check_sharing(s: DoctorSnapshot) -> Check:
     return Check("gpu_sharing", Level.OK, f"GPU {gpu.index} is free of foreign load")
 
 
+def _check_searxng(s: DoctorSnapshot) -> Check:
+    if s.searxng_ok is None:
+        return Check("searxng", Level.OK, "not configured; web search starts with Tavily")
+    url = s.settings.searxng_url
+    if s.searxng_ok:
+        return Check("searxng", Level.OK, f"answers at {url}")
+    return Check("searxng", Level.WARNING, f"no JSON answer from {url}; searches go on to Tavily")
+
+
 def evaluate(snapshot: DoctorSnapshot, registry: Mapping[Role, RoleSpec]) -> list[Check]:
     """All checks, in display order."""
     return [
@@ -138,6 +148,7 @@ def evaluate(snapshot: DoctorSnapshot, registry: Mapping[Role, RoleSpec]) -> lis
         _check_gpu(snapshot),
         _check_calibration(snapshot),
         _check_sharing(snapshot),
+        _check_searxng(snapshot),
     ]
 
 

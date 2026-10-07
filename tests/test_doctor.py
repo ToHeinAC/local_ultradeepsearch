@@ -201,3 +201,15 @@ def test_exit_code_is_one_only_for_errors() -> None:
     assert exit_code([Check("a", Level.WARNING, "")]) == 0
     assert exit_code([Check("a", Level.OK, ""), Check("b", Level.ERROR, "")]) == 1
     assert exit_code([]) == 0
+
+
+@pytest.mark.parametrize(
+    ("answering", "level", "word"),
+    [(None, Level.OK, "not configured"), (True, Level.OK, "answers"), (False, Level.WARNING, "no")],
+)
+def test_the_searxng_check_follows_the_probe(
+    answering: bool | None, level: Level, word: str
+) -> None:
+    check = run(green(searxng_ok=answering))["searxng"]
+    assert check.level is level
+    assert word in check.detail

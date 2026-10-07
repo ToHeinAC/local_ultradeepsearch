@@ -91,3 +91,21 @@ def test_a_body_that_is_not_json_is_transient() -> None:
 
     with pytest.raises(TransientProviderError):
         api(html).search("q")
+
+
+def test_healthy_means_a_json_answer_with_a_results_list() -> None:
+    handler, _ = answer({"results": []})
+    assert api(handler).healthy() is True
+
+
+@pytest.mark.parametrize("status", [403, 500])
+def test_unhealthy_on_an_error_status(status: int) -> None:
+    handler, _ = answer({}, status)
+    assert api(handler).healthy() is False
+
+
+def test_unhealthy_when_nothing_answers() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    assert api(refuse).healthy() is False

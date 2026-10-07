@@ -38,6 +38,7 @@ from app.adapters.outbound.http_get import HttpGetter
 from app.adapters.outbound.ledger import MonthLedger, RunLedger, extract_credits, search_credits
 from app.adapters.outbound.log import OutboundLog, OutboundRecord
 from app.adapters.outbound.sanitizer import SanitizedQuery, SanitizerError
+from app.adapters.outbound.searxng import SearxngApi
 from app.adapters.outbound.tavily import TAVILY_EXTRACT_URL, TAVILY_SEARCH_URL, TavilyApi
 from app.adapters.outbound.throttle import HostThrottle
 from app.adapters.outbound.types import RawResponse, ScholarlyRecord, SearchHit
@@ -102,6 +103,7 @@ class Providers:
     crossref: ScholarlyApi
     arxiv: ScholarlyApi
     http: HttpGetter
+    searxng: SearxngApi | None = None  # our own metasearch; first in the web chain when set
 
 
 def _status(exc: ProviderError) -> str:
@@ -287,9 +289,13 @@ class OutboundGateway:
         include_domains: Sequence[str] = (),
         max_results: int = 10,
     ) -> list[SearchHit]:
-        """Tavily while it is usable, otherwise ddgs. Raises `SearchUnavailable` if both fail."""
+        """SearXNG when configured, then Tavily while it is usable, then ddgs. A provider that
+        fails or finds nothing hands the query on. Raises `SearchUnavailable` if all fail."""
         texts = [prepared.sent, *include_domains]
         self._require_clean(texts, step=step, provider="web_search", query=prepared)
+        found = self._try_searxng(prepared, step, max_results)
+        if found:
+            return found
         reason = self._tavily_block_reason()
         if reason is not None:
             self._switch(reason)
@@ -305,6 +311,38 @@ class OutboundGateway:
             pace_url=DDGS_PACE_URL,
             log_url=None,
             query=prepared,
+        )
+
+    def _try_searxng(self, prepared: PreparedQuery, step: str, max_results: int) -> list[SearchHit]:
+        """SearXNG hits; empty when it is not configured, failed or found nothing (then the
+        `search_fallback` event says why). Its URL is our own loopback service, so it is not run
+        through the private-URL guard; the URLs of its hits are fetched through it as always."""
+        searx = self._providers.searxng
+        if searx is None:
+            return []
+        url = f"{searx.base_url}/search"
+        try:
+            hits = self._attempts(
+                lambda: searx.search(prepared.sent, max_results),
+                provider="searxng_search",
+                step=step,
+                delays=(),
+                pace_url=url,
+                log_url=url,
+                query=prepared,
+            )
+        except (SearchUnavailable, ProviderError):
+            self._fell_through("error")
+            return []
+        if not hits:
+            self._fell_through("empty")
+        return hits
+
+    def _fell_through(self, reason: str) -> None:
+        target = "tavily" if self._tavily_block_reason() is None else "ddgs"
+        level = "warning" if reason == "error" else "info"
+        self._events.emit(
+            "search_fallback", level=level, **{"from": "searxng", "to": target, "reason": reason}
         )
 
     def _try_tavily(

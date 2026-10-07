@@ -27,6 +27,7 @@ from app.adapters.outbound.ledger import MonthLedger, RunLedger
 from app.adapters.outbound.log import OutboundLog
 from app.adapters.outbound.sanitizer import Sanitizer
 from app.adapters.outbound.scholarly import ArxivApi, CrossrefApi, OpenAlexApi
+from app.adapters.outbound.searxng import SearxngApi
 from app.adapters.outbound.tavily import TavilyApi
 from app.adapters.outbound.types import HttpFactory, default_http
 from app.adapters.pandoc import SubprocessPandoc
@@ -148,7 +149,13 @@ def _own_loaded_vram(rt: Runtime) -> int:
     return sum(m.size_vram for m in loaded)
 
 
-def collect_snapshot(rt: Runtime) -> DoctorSnapshot:
+def _searxng_answers(settings: Settings, http: HttpFactory) -> bool | None:
+    if not settings.searxng_url:
+        return None
+    return SearxngApi(settings.searxng_url, http, timeout_s=settings.fetch_timeout_s).healthy()
+
+
+def collect_snapshot(rt: Runtime, *, http: HttpFactory = default_http) -> DoctorSnapshot:
     """Ask the machine everything the doctor needs. Reads the calibration file fresh."""
     stored = load_calibration(calibration_path(rt.settings))
     by_url = {url: rt.admin.tags(url) for url in set(rt.urls.values())}
@@ -161,6 +168,7 @@ def collect_snapshot(rt: Runtime) -> DoctorSnapshot:
         gpus=rt.probe.gpus(),
         own_loaded_vram_bytes=_own_loaded_vram(rt),
         calibration_ctx=calibration_for(stored, rt.settings),
+        searxng_ok=_searxng_answers(rt.settings, http),
     )
 
 
@@ -199,6 +207,9 @@ def build_providers(settings: Settings, *, http: HttpFactory = default_http) -> 
             max_html_bytes=int(settings.max_html_mb * MIB),
             max_pdf_bytes=int(settings.max_pdf_mb * MIB),
         ),
+        searxng=SearxngApi(settings.searxng_url, http, timeout_s=timeout)
+        if settings.searxng_url
+        else None,
     )
 
 
