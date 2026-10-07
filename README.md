@@ -44,6 +44,7 @@ uv run udr run <run_id>                # Phase 2: plan, approve the queries, rep
 uv run udr apikey create --name me --self-approve  # key for REST and MCP
 uv run udr serve                       # API on 127.0.0.1:8541 (REST /v1, MCP /mcp)
 uv run udr worker                      # executes the queued runs
+uv run udr gui                         # German GUI on 127.0.0.1:8540 (needs UDR_GUI_API_KEY)
 uv run pytest                          # offline tests
 uv run pytest -m live                  # tests against the real models
 ```
@@ -52,9 +53,9 @@ uv run pytest -m live                  # tests against the real models
 there. How that works, the settings and how to stop it:
 [docs/ollama-runtime.md](docs/ollama-runtime.md).
 
-The API, the keys and the worker: [docs/api.md](docs/api.md).
+The API, the keys and the worker: [docs/api.md](docs/api.md). The GUI: [docs/gui.md](docs/gui.md).
 
-Web search uses Tavily if `TAVILY_API_KEY` is in `.env`, otherwise DuckDuckGo. Everything that goes
+Web search uses your own SearXNG if `UDR_SEARXNG_URL` is set ([deploy/searxng/](deploy/searxng/README.md)), then Tavily if `TAVILY_API_KEY` is in `.env`, then DuckDuckGo. Everything that goes
 out is checked against the denylist and logged; see [docs/outbound.md](docs/outbound.md).
 
 ## Layout

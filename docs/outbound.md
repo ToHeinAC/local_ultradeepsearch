@@ -15,7 +15,7 @@ Ollama transport may import network modules; `tests/test_egress_guard.py` enforc
 | `log.py` | `OutboundLog`: one JSON line per attempt and per block |
 | `ledger.py` | Tavily prices, `RunLedger`, `MonthLedger` |
 | `throttle.py` | `HostThrottle`: minimum interval per host |
-| `tavily.py`, `ddgs_search.py`, `scholarly.py`, `http_get.py` | One-attempt clients; raise the errors in `errors.py` |
+| `searxng.py`, `tavily.py`, `ddgs_search.py`, `scholarly.py`, `http_get.py` | One-attempt clients; raise the errors in `errors.py` |
 | `extract.py` | Content-type sniffing, charset decoding, trafilatura (HTML), pypdfium2 (PDF) |
 | `http_util.py`, `types.py`, `errors.py` | Shared HTTP call and status mapping, data types, errors |
 
@@ -27,7 +27,7 @@ It writes `<run_dir>/outbound.jsonl` and shares `data/denylist.txt` and `data/ta
 | Call | Does | Fails with |
 |---|---|---|
 | `prepare_query(query, step)` | Collapses whitespace, then denylist → sanitizer → denylist. Nothing leaves the machine. | `DenylistBlocked`, `OutboundBlocked("sanitizer_failed")` |
-| `search_web(prepared, step, include_domains=(), max_results=10)` | Tavily while usable, else ddgs | `DenylistBlocked`, `SearchUnavailable` |
+| `search_web(prepared, step, include_domains=(), max_results=10)` | SearXNG if configured, then Tavily while usable, then ddgs | `DenylistBlocked`, `SearchUnavailable` |
 | `search_scholarly(prepared, step, source)` | One of `openalex`, `crossref`, `arxiv`; no credits | `DenylistBlocked`, `SearchUnavailable` |
 | `fetch(url, step)` | Local fetch, then Tavily Extract as a fallback | Returns a `Document` or a `FetchFailure(reason)`; never raises |
 
@@ -87,6 +87,15 @@ hand).
 changes in between (DNS rebinding) is not caught.
 
 ## Web search and provider switching
+
+**SearXNG** (`UDR_SEARXNG_URL`, loopback only, our own container from `deploy/searxng/`) answers
+first. The query is sanitized, denylist-checked and logged as `searxng_search` with 0 credits as for
+any provider; the SearXNG URL itself skips the private-URL guard (it is our service), the URLs of
+its hits do not. An error or 0 hits hands the query on and emits `search_fallback {from: searxng,
+to: tavily|ddgs, reason: error|empty}`; nothing is switched for the run. Without the setting the
+chain starts at Tavily. The image is `searxng/searxng:latest` until pinned by digest
+([deploy/searxng/README.md](../deploy/searxng/README.md)); SearXNG is AGPL-3.0 and accepted only as
+an unmodified external service ([AGENTS.md](../AGENTS.md) §5.5).
 
 **Tavily** is used while all of these hold:
 - a key is configured;
@@ -155,7 +164,7 @@ ts, step, provider, original_query, sent_query, removed_terms, url, status, cred
 
 | Field | Values |
 |---|---|
-| `provider` | `tavily_search`, `tavily_extract`, `ddgs_search`, `openalex`, `crossref`, `arxiv`, `http_get`; `sanitizer` / `web_search` for blocks |
+| `provider` | `searxng_search`, `tavily_search`, `tavily_extract`, `ddgs_search`, `openalex`, `crossref`, `arxiv`, `http_get`; `sanitizer` / `web_search` for blocks |
 | `status` | the HTTP code, `ok`, `blocked:<reason>` or `error:<timeout\|network\|transient\|provider>` |
 | `url` | the request URL; for `tavily_extract`, the page sent to Tavily |
 
@@ -165,10 +174,14 @@ ts, step, provider, original_query, sent_query, removed_terms, url, status, cred
 
 | Variable | Default | |
 |---|---|---|
+| `UDR_SEARXNG_URL` | – | Our SearXNG, loopback only. `udr doctor` checks that it answers. |
 | `TAVILY_API_KEY` | – | Secret. Without it, search uses ddgs. |
 | `OPENALEX_MAILTO` | – | Polite-pool contact for OpenAlex and Crossref |
 | `OPENALEX_API_KEY` | – | Optional secret, sent as a Bearer header |
 | `UDR_TAVILY_MONTHLY_LIMIT` | `1000` | `0` disables Tavily |
+
+A run may carry its own Tavily cap (`tavily_cap`, 0 up to the tier's `credit_cap`), chosen at the
+brief approval or in `POST /v1/runs`; it replaces the tier's cap for that run.
 | `UDR_INTERNAL_DOMAINS` | – | Comma-separated suffixes, e.g. `brenk.local,corp.example` |
 | `UDR_FETCH_TIMEOUT_S` | `30` | |
 | `UDR_MAX_HTML_MB` / `UDR_MAX_PDF_MB` | `10` / `25` | |

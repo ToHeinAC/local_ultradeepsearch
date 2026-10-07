@@ -9,7 +9,7 @@ udr serve   REST /v1 + MCP /mcp on 127.0.0.1:8541     udr worker   loop: next ru
          -> ResearchService (never runs a graph)        cancel flag read between steps
 ```
 
-The API never executes a research graph. Approving a plan only sets the run `queued` (and stores
+The GUI ([gui.md](gui.md)) is a client of this API. The API never executes a research graph. Approving a plan only sets the run `queued` (and stores
 the approved plan hash); the worker takes `queued` runs first in first out, a run left `running`
 by a dead worker first of all, and carries the approval through. A run waiting for an approval is
 not in the queue. `udr run` still executes in its own process; the worker lock keeps one run
@@ -41,9 +41,10 @@ object stays as it was. The full tier is refused with 422 "Full-Tier ab M8"; tie
 
 | Group | Endpoints |
 |---|---|
-| sessions (answer 202, the session view has `busy`) | `POST /sessions` (multipart `question`, `files`); `POST /sessions/{id}/uploads`; `POST …/messages {answers, note, genug, offer}`; `GET /sessions/{id}`; `POST …/revise {feedback}`; `PUT …/settings`; `PUT …/brief {text}`; `POST …/approve {brief_sha256, tier, summarize_model?}` (200 `{run_id}`); `POST …/save` |
-| runs | `POST /runs {brief, tier, template_id, language?, response_format?}` (201); `GET /runs`; `GET /runs/{id}`; `POST …/approve`; `GET …/events?after=N` (`{events, next}`); `GET …/stream` (SSE) |
+| sessions (answer 202, the session view has `busy`) | `POST /sessions` (multipart `question`, `files`); `POST /sessions/{id}/uploads`; `POST …/messages {answers, note, genug, offer}`; `GET /sessions/{id}`; `POST …/revise {feedback}`; `PUT …/settings`; `PUT …/brief {text}`; `POST …/approve {brief_sha256, tier, summarize_model?, tavily_cap?}` (200 `{run_id}`); `POST …/save` |
+| runs | `POST /runs {brief, tier, template_id, language?, response_format?, tavily_cap?}` (201); `GET /runs`; `GET /runs/{id}`; `POST …/approve`; `GET …/events?after=N` (`{events, next}`); `GET …/stream` (SSE) |
 | plan | `GET`/`PUT /runs/{id}/search-plan` (`{plan, plan_sha256, text}`); `POST …/search-plan/approve {plan_sha256}` (202, `queued`) |
+| overview | `GET /sessions` (id, status, title, creating key); `POST /sessions/{id}/retry` (202); `GET /run-summaries`, `GET /runs/{id}/summary` (title, creator, step spans, Tavily credits of run and month, sources, warnings); `GET /doctor` (checks and role to model map) |
 | output | `GET …/report?format=md\|docx\|pdf` (also for `blocked` runs); `GET …/gate`; `GET …/outbound` |
 | control | `POST …/cancel`; `POST …/resume` (202); `DELETE /runs/{id}` (204) |
 | admin | `GET`/`POST /templates` (multipart `file`; an existing id is 409); `GET`/`PUT /denylist {terms}`; `GET /health`; `GET /config` (secrets show `set`) |
@@ -71,7 +72,7 @@ curl -s -H "Authorization: Bearer $KEY" "localhost:8541/v1/runs/$RUN/report?form
 ## Events and cancel
 
 Events go to `data/events.jsonl` and, while a run executes, also to `data/runs/<id>/events.jsonl`
-with `run_id`. `…/events?after=N` returns the lines after the first N and the new cursor. The
+with `run_id`; each step announces itself with `step_started` and `step_finished`. `…/events?after=N` returns the lines after the first N and the new cursor. The
 stream sends one SSE event per line (`id:` is the line number, `Last-Event-ID` resumes) and ends at
 a final status (`done`, `blocked`, `failed`, `cancelled`); the last event is written before the
 status changes. Cancel acts at once on a run that does not execute (`queued`, waiting for an

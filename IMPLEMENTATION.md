@@ -16,6 +16,8 @@ Rules: [AGENTS.md](AGENTS.md). Design: [docs/architecture.md](docs/architecture.
 | Phase 1: clarify and approve a brief | `uv run udr brief "<question>" [--file F]...`, `--list`, `--session <id>` (see [docs/brief.md](docs/brief.md)) |
 | Phase 2: start or continue a run, review its plan | `uv run udr run <run_id> [--approve-plan <sha> \| --no-input]`, `uv run udr run --brief F --tier light --template ID` (see [docs/research.md](docs/research.md)) |
 | Service: API, worker, keys | `uv run udr serve`, `uv run udr worker`, `uv run udr apikey create --name N [--self-approve]`, `list`, `revoke ID` (see [docs/api.md](docs/api.md)) |
+| GUI (German, Streamlit) | `uv run udr gui` on `127.0.0.1:8540`; needs `udr serve`, `udr worker` and `UDR_GUI_API_KEY` (see [docs/gui.md](docs/gui.md)) |
+| Own web search (optional) | `docker compose -f deploy/searxng/compose.yaml up -d`, `UDR_SEARXNG_URL=http://127.0.0.1:8888` (see [deploy/searxng/README.md](deploy/searxng/README.md)) |
 | Ingest sources of a run (library call; the CLI and graphs arrive later) | `bootstrap.build_pipeline(rt, run_id, tier="light", focus=...)`, then `pipeline.resume()` and `pipeline.ingest_many(items)` |
 
 ## 2. Phase status
@@ -31,7 +33,7 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | 4 | M4: Phase 1 — clarification, uploads, brief ([plan](docs/plans/m4-brief.md)) | done | AC1–AC8 offline: `test_brief_*.py` (render, store, uploads, digest, interview, graph, service, console), `test_documents.py`, `test_cli_brief.py`, a real SIGKILL in `test_brief_service.py`, zero-outbound in `test_egress_guard.py`; 1396 offline tests, 98 % branch coverage. live: `tests/live/test_live_brief.py` ran, see §4 |
 | 5 | M5: Lite end to end, plan gate, templates, ship gate, export ([plan](docs/plans/m5-lite.md)) | done | offline: every step, the gate G1–G12 with fixtures, fix rounds, export, a whole Lite run on fakes, the real composition (`test_bootstrap_research.py`), `udr run` (`test_cli_run.py`) and two real SIGKILLs (`test_research_crash.py`); live AC8: a German Lite run passed the gate in 52 min, see §4 |
 | 6 | M6: Service — REST, MCP, worker ([plan](docs/plans/m6-service.md)) | done | offline: AC1–AC7 in `test_api_auth.py`, `test_api_rest.py`, `test_worker.py`, `test_worker_crash.py` (real SIGKILL), `test_api_mcp.py`, `test_api_openapi.py`; live: a whole Lite run through REST and the worker in 36 min, see §4 |
-| 7 | M7: GUI (Streamlit, German) and SearXNG search ([plan](docs/plans/m7-gui.md)) | in progress | import scan, AppTest, safe-exit tests |
+| 7 | M7: GUI (Streamlit, German) and SearXNG search ([plan](docs/plans/m7-gui.md)) | in progress | offline: AC1 `test_layer_rules.py`, AC2 `test_gui_brief.py` and `test_gui_plan.py`, AC3 and AC5 `test_gui_shell.py`, AC4 `test_gui_shell.py` and `test_gui_runs.py`; `test_client.py`, `test_searxng.py`, `test_gateway.py`; live check (plan step 13) pending, see §4 |
 | 8 | M8: Full tier — analysis steps 3–9 | planned | invariant tests, investigator caps, schema tests |
 | 9 | M9: Full tier — drafting and review, calibration | planned | full step-sequence, patch-engine tests; live Full run |
 | 10 | M10: Operations | planned | backup/restore test; manual reboot and bind checks |
@@ -52,11 +54,13 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/bootstrap.py` | Composition root: settings → own instance → wired `Runtime`; doctor snapshot; calibrate; `build_providers` / `build_gateway` for a run (restores the run's spent credits); `run_dir`, `open_vault`, `build_pipeline`; `build_brief_service` and `build_research_service` (the per-run context, the step dependencies from the model registry, the worker lock). |
 | `src/app/cli.py` | `udr` command (`doctor`, `denylist`, `brief`, `run`, `serve`, `worker`, `apikey`). Entry point `udr = app.cli:main`. |
 | `src/app/worker.py` | `Worker`: the queue loop over the `runs` table (orphans first, then FIFO). |
-| `src/app/api/` | `facade.py` (service layer for REST and MCP), `rest.py` and `routes_*.py`, `mcp.py`, `keys.py`, `jobs.py` (Phase-1 thread pool), `errors.py`, `schemas.py`, `server.py`. The only code that imports fastapi, starlette, uvicorn or mcp. See [docs/api.md](docs/api.md). |
+| `src/app/client.py` | The GUI's typed `httpx` client of the REST API (loopback only) and the plan table helpers. See [docs/gui.md](docs/gui.md). |
+| `src/app/gui/` | Streamlit app (`app.py`, `state.py`, `texts.py`, `pages/`); imports from the application only `app.client`, enforced by `tests/test_layer_rules.py`. |
+| `src/app/api/` | `summary.py` (run and session summaries for the GUI), `facade.py` (service layer for REST and MCP), `rest.py` and `routes_*.py`, `mcp.py`, `keys.py`, `jobs.py` (Phase-1 thread pool), `errors.py`, `schemas.py`, `server.py`. The only code that imports fastapi, starlette, uvicorn or mcp. See [docs/api.md](docs/api.md). |
 | `src/app/adapters/ollama_transport.py` | Chat via the `ollama` client and read-only status probes. Loopback only. |
 | `src/app/adapters/ollama_instance.py` | Adopt, start or fail open our own Ollama daemon on `:11436`. See [docs/ollama-runtime.md](docs/ollama-runtime.md). |
 | `src/app/adapters/system_probe.py` | `nvidia-smi`, free disk, binary lookup, model-store discovery. |
-| `src/app/adapters/outbound/` | The only egress: denylist, private-URL guard, sanitizer, outbound log, credit ledgers, throttle, Tavily / ddgs / OpenAlex / Crossref / arXiv clients, HTTP fetch and HTML/PDF extraction, and the run-scoped `OutboundGateway`. See [docs/outbound.md](docs/outbound.md). |
+| `src/app/adapters/outbound/` | The only egress: denylist, private-URL guard, sanitizer, outbound log, credit ledgers, throttle, SearXNG / Tavily / ddgs / OpenAlex / Crossref / arXiv clients, HTTP fetch and HTML/PDF extraction, and the run-scoped `OutboundGateway`. See [docs/outbound.md](docs/outbound.md). |
 | `src/app/templates.py`, `templates/` | Report templates (front matter plus one H2 per section), validation, the five built-ins. |
 | `src/app/documents.py` | PDF text and page images (greyscale PNG), DOCX, text decoding; no network. |
 | `src/app/brief/` | Phase 1: render, parse and hash the brief, interview, uploads, digest, `BriefService`, the terminal loop. See [docs/brief.md](docs/brief.md). |
@@ -65,6 +69,8 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `src/app/graphs/` | The only place that imports LangGraph: the `brief` graph, `BriefRunner` (synchronous checkpoints) and the checkpointer. |
 | `src/app/store/` | The run-scoped SQLite vault (migrations, notes, claims, rejections, FTS5 search, stats; see [docs/vault.md](docs/vault.md)), and the Phase-1 `sessions.py` and `runs.py` (sessions, uploads, approved runs). |
 | `src/app/pipeline/` | Ingestion: `fetch.py` (`FetchPipeline`, resume), URL canonicalising, junk gates, MinHash near-duplicates, claim extraction, long-source analysis, scoring, note files and run stats, profile and source-strategy loaders. See [docs/vault.md](docs/vault.md). |
+| `deploy/searxng/` | Compose file, `settings.yml` and README of the optional SearXNG container. |
+| `tests/gui_rig.py` | The fake API and `AppTest` runner of the GUI tests. |
 | `config/` | `profiles.toml` (per-tier budgets) and `source_strategies.toml` (tier weights, host rules, domain sections). |
 | `tests/research_rig.py`, `tests/research_run_rig.py`, `tests/research_crash_child.py` | The Phase-2 fakes (gateway pieces, scripted models, pandoc), a whole Lite run on them, and the child process the Phase-2 SIGKILL tests kill. |
 | `tests/brief_rig.py`, `tests/brief_crash_child.py` | The scripted model and the wired Phase-1 session; the child process the Phase-1 SIGKILL test kills. |
@@ -82,6 +88,21 @@ One row per PRD milestone. Status: `planned`, `in progress`, `done`.
 | `.claude/hooks/stop_gate.py` | Stop hook: runs the gate if `.py` files changed; blocks the stop on failure. |
 
 ## 4. Open issues
+
+- M7 (2026-10-07), offline only so far; the live check (plan step 13: SearXNG, a whole run from the
+  GUI, the approval path of a key without self-approve, MCP from Claude Code) has not run.
+  1. The M6 observation "the events endpoint returned `[]` for 25 min" did not reproduce: on the
+     real composition the run's event file receives model events during a step. What was missing
+     was any event announcing a step, so a step whose first model call takes minutes showed
+     nothing. `step_started` and `step_finished` now exist; whether this explains the live
+     observation is unconfirmed.
+  2. `deploy/searxng/compose.yaml` uses `searxng/searxng:latest`: no Docker daemon was available to
+     resolve a digest. Pin it after the first pull (README there).
+  3. The per-run Tavily cap is stored in the run's frozen settings (`RunSettings.tavily_cap`), not in
+     a `runs` column as the plan said. The GUI's poll interval is `POLL_SECONDS` in `gui/state.py`
+     (the GUI may not read `config/profiles.toml`). The GUI offers the cap without knowing the
+     tier's limit; the API answers 422 above it.
+  4. `include_domains` are not sent to SearXNG (it has no such filter).
 
 - M6 live check (2026-10-06, run `r-20261006-102744-168d71`, the M5 German heat-pump brief, tier
   light, template `auto`, ddgs, real models): `udr serve` and `udr worker` as two processes, a
