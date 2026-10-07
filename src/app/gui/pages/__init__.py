@@ -6,7 +6,7 @@ from typing import Any
 import streamlit as st
 
 from app.gui import texts
-from app.gui.pages import bericht, laeufe, neue_recherche, suchplan
+from app.gui.pages import bericht, einstellungen, laeufe, neue_recherche, suchplan
 
 Render = Callable[[Any], None]
 
@@ -23,3 +23,4 @@ PAGES["neue_recherche"] = neue_recherche.render
 PAGES["suchplan"] = suchplan.render
 PAGES["laeufe"] = laeufe.render
 PAGES["bericht"] = bericht.render
+PAGES["einstellungen"] = einstellungen.render

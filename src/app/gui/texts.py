@@ -125,3 +125,12 @@ FORMAT_MISSING = "{fmt} nicht verfügbar."
 DOCX_HINT = "Für DOCX wird pandoc benötigt."
 NO_REPORT_RUNS = "Noch kein Lauf mit Bericht."
 BIG_REPORT_CHARS = 100_000
+
+# ---- Einstellungen --------------------------------------------------------------------------
+DENYLIST = "Denylist (ein Begriff pro Zeile)"
+DENYLIST_HELP = "Diese Begriffe verlassen nie den Rechner: Anfragen mit ihnen werden gesperrt."
+DENYLIST_SAVED = "Denylist gespeichert ({n} Begriffe)."
+DOCTOR = "Systemstatus"
+LEVEL_TAGS = {"ok": "OK", "warning": "WARN", "error": "ERROR"}
+ROLES = "Rollen und Modelle"
+ROLE_COLUMNS = ("Rolle", "Modell", "Endpunkt")

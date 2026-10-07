@@ -20,6 +20,8 @@ class FakeApi:
             "list_sessions": [],
             "run_summaries": [],
             "templates": [],
+            "get_denylist": {"terms": []},
+            "doctor": {"checks": [], "roles": []},
             "report": b"# Bericht",
             "gate": {"passed": True, "failed": []},
             "run_summary": {"title": None, "status": "done"},
