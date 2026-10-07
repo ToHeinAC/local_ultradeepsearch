@@ -51,6 +51,13 @@ def test_settings_that_were_never_written_are_an_error(tmp_path: Path) -> None:
         read_settings(tmp_path)
 
 
+def test_the_tavily_cap_defaults_to_the_tiers_and_cannot_be_negative() -> None:
+    assert SETTINGS.tavily_cap is None
+    with pytest.raises(ValidationError):
+        RunSettings(**{**SETTINGS.model_dump(), "tavily_cap": -1})
+    assert RunSettings(**{**SETTINGS.model_dump(), "tavily_cap": 0}).tavily_cap == 0
+
+
 def test_settings_are_validated() -> None:
     with pytest.raises(ValidationError):
         RunSettings(

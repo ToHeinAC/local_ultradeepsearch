@@ -414,7 +414,10 @@ def _build_run_context(
     text = archive.read_text(encoding="utf-8")
     parsed = parse_brief(text)
     directory = run_dir(settings, row.run_id)
-    gateway = make_gateway(directory, text, load_profile(run_settings.tier, settings.config_dir))
+    profile = load_profile(run_settings.tier, settings.config_dir)
+    if run_settings.tavily_cap is not None:  # the run's own cap (PRD M7), at most the tier's
+        profile = profile.model_copy(update={"credit_cap": run_settings.tavily_cap})
+    gateway = make_gateway(directory, text, profile)
     template = templates[run_settings.template_id]
     llm = llm_for_run(
         rt.service, run_settings, rt.registry[Role.SUMMARIZE].model, row.run_id, rt.events

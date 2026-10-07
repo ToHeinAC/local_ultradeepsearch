@@ -412,6 +412,7 @@ def test_approval_freezes_the_effective_settings_into_the_run(r: Rig) -> None:
         "interview_language": "de",
         "tier": "full",
         "summarize_model": "gemma4:e2b",
+        "tavily_cap": None,
     }
 
 
@@ -802,3 +803,28 @@ def test_a_sigkilled_process_is_continued_by_a_fresh_one(tmp_path: Path) -> None
     assert approved.status == "approved"
     (archive,) = fresh.archives()
     assert archive.read_bytes() == done.brief_text.encode("utf-8")
+
+
+# ---- per-run Tavily cap and the session's creator (PRD M7) -----------------------------------
+
+
+def test_the_tavily_cap_chosen_at_approval_is_frozen_into_the_run(r: Rig) -> None:
+    view = at_decision(r)
+    r.service.approve(view.session_id, str(view.brief_sha256), "light", tavily_cap=7)
+    run = r.parts.runs.run_for_session(view.session_id)
+    assert run is not None
+    assert json.loads(str(run.settings_json))["tavily_cap"] == 7
+
+
+def test_a_negative_tavily_cap_is_refused_and_the_session_stays(r: Rig) -> None:
+    view = at_decision(r)
+    with pytest.raises(InvalidInput, match="tavily_cap"):
+        r.service.approve(view.session_id, str(view.brief_sha256), "light", tavily_cap=-1)
+    assert r.service.get(view.session_id).waiting_for == "decision"
+
+
+def test_a_session_remembers_the_key_that_started_it(r: Rig) -> None:
+    by_key = r.service.start(QUESTION, created_by="k-1")
+    by_cli = r.service.start(QUESTION)
+    assert r.parts.sessions.get(by_key.session_id).created_by == "k-1"  # type: ignore[union-attr]
+    assert r.parts.sessions.get(by_cli.session_id).created_by is None  # type: ignore[union-attr]

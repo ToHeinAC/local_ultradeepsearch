@@ -217,13 +217,15 @@ class BriefService:
 
     # ---- the interview --------------------------------------------------------------------
 
-    def start(self, question: str, files: Sequence[UploadFile] = ()) -> SessionView:
+    def start(
+        self, question: str, files: Sequence[UploadFile] = (), created_by: str | None = None
+    ) -> SessionView:
         """Open a session from the owner's first message. A rejected upload leaves nothing."""
         if not question.strip():
             raise InvalidInput("the question must not be empty")
         text = question  # as the owner typed it: a pasted prompt is kept byte for byte
         language = detect_interview_language(question, self._d.limits)
-        session_id = self._d.store.create(language).session_id
+        session_id = self._d.store.create(language, created_by).session_id
         try:
             self._d.ingestor.accept(session_id, files)
         except BriefError:
@@ -345,8 +347,10 @@ class BriefService:
         sha256: str,
         tier: Tier,
         summarize_model: str | None = None,
+        tavily_cap: int | None = None,
     ) -> SessionView:
         """Approve the brief whose hash is ``sha256`` (M4 AC1): archive it and create the run.
+        ``tavily_cap`` limits the run's Tavily credits (at most the tier's; the facade checks).
 
         `auto` applies the recommendation. A stale hash is `StaleBrief`; a session that is not at
         its decision (also one already approved) is `WrongState`."""
@@ -357,6 +361,8 @@ class BriefService:
         models = self._d.summarize_models
         if summarize_model is not None and models and summarize_model not in models:
             raise InvalidInput(f"summarize_model must be one of {', '.join(models)}")
+        if tavily_cap is not None and tavily_cap < 0:
+            raise InvalidInput("tavily_cap must be 0 or more")
         with self._lock(session_id):
             decision = self._payload(session_id, "decision")
             if self._row(session_id).brief_sha256 != sha256:
@@ -367,6 +373,7 @@ class BriefService:
                 sha256=sha256,
                 tier=chosen,
                 summarize_model=summarize_model,
+                tavily_cap=tavily_cap,
                 at=self._d.now(),
             )
             return self._decide(session_id, approval.model_dump(mode="json"), wait=True)

@@ -170,8 +170,13 @@ CREATE TABLE api_keys (
 """
 """Migration 4: the run queue, cancel flag, pending plan approval and API keys (PRD M6)."""
 
+MIGRATION_5 = """
+ALTER TABLE sessions ADD COLUMN created_by TEXT;
+"""
+"""Migration 5: the API key that started a session (PRD M7); NULL for the CLI."""
+
 # Later milestones append their own migrations; never edit one that has shipped.
-MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4]
+MIGRATIONS: list[str] = [MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5]
 
 
 WAL_RETRY_S = 5.0

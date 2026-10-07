@@ -22,6 +22,7 @@ from app.brief.service import BriefService, SessionView, Tier
 from app.brief.uploads import UploadFile
 from app.config import Settings
 from app.events import read_run_events
+from app.pipeline.profiles import load_profile
 from app.research.service import ResearchService, RunView, TierNotAvailable
 from app.templates import ReportTemplate, TemplateError, parse_template
 
@@ -66,7 +67,7 @@ class Facade:
     def start_session(
         self, key: ApiKey, question: str, files: Sequence[UploadFile] = ()
     ) -> SessionView:
-        return self._shown(self._briefs.start(question, files))
+        return self._shown(self._briefs.start(question, files, created_by=key.key_id))
 
     def add_uploads(self, key: ApiKey, session_id: str, files: Sequence[UploadFile]) -> SessionView:
         return self._shown(self._briefs.add_files(session_id, files))
@@ -127,9 +128,10 @@ class Facade:
         brief_sha256: str,
         tier: Tier,
         summarize_model: str | None = None,
+        tavily_cap: int | None = None,
     ) -> SessionView:
         """Approve the brief and create its run. `auto` takes the session's recommendation; the
-        full tier does not exist before M8."""
+        full tier does not exist before M8. ``tavily_cap`` is at most the tier's credit cap."""
         _require_self_approve(key)
         if self._jobs.busy(session_id):
             raise WrongState("the session is busy with an earlier request")
@@ -138,7 +140,16 @@ class Facade:
             recommended = self._briefs.get(session_id).recommendation
             tier = "light" if recommended is None else recommended["tier"]
             _refuse_full(tier)
-        return self._shown(self._briefs.approve(session_id, brief_sha256, tier, summarize_model))
+        self._check_tavily_cap(tier, tavily_cap)
+        approved = self._briefs.approve(session_id, brief_sha256, tier, summarize_model, tavily_cap)
+        return self._shown(approved)
+
+    def _check_tavily_cap(self, tier: str, cap: int | None) -> None:
+        if cap is None:
+            return
+        limit = load_profile(tier, self._settings.config_dir).credit_cap
+        if not 0 <= cap <= limit:
+            raise InvalidInput(f"tavily_cap must be between 0 and {limit} for the {tier} tier")
 
     # ---- runs ------------------------------------------------------------------------------
 
@@ -151,10 +162,12 @@ class Facade:
         template_id: str,
         language: str | None = None,
         response_format: str | None = None,
+        tavily_cap: int | None = None,
     ) -> RunView:
         """A run for a brief written elsewhere; without `self_approve` it waits for a brief
         approval."""
         _refuse_full(tier)
+        self._check_tavily_cap("light" if tier == "auto" else tier, tavily_cap)
         return self._research.create_external_run(
             brief,
             tier=tier,
@@ -163,6 +176,7 @@ class Facade:
             response_format=response_format,
             approved=key.self_approve,
             created_by=key.key_id,
+            tavily_cap=tavily_cap,
         )
 
     def list_runs(self, key: ApiKey) -> list[RunView]:

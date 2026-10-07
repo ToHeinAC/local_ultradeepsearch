@@ -295,6 +295,7 @@ class _Nodes:
                     "interview_language": state["language"],
                     "tier": decision.tier,
                     "summarize_model": decision.summarize_model,
+                    "tavily_cap": decision.tavily_cap,
                 }
             ),
         )

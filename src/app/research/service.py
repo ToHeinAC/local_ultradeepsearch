@@ -100,11 +100,14 @@ class ResearchService:
         response_format: str | None = None,
         approved: bool = True,
         created_by: str | None = None,
+        tavily_cap: int | None = None,
     ) -> RunView:
         """A run for a brief written elsewhere (PRD M5 `udr run --brief`): code adds the Method
         line and the Output section, archives the bytes and queues the run. Starting it from the
         owner's shell is the approval; an API caller without `approved` leaves it
         `awaiting_brief_approval`. Tier `auto` becomes `light` until the full tier exists."""
+        if tavily_cap is not None and tavily_cap < 0:
+            raise InvalidInput("tavily_cap must be 0 or more")
         auto = tier == "auto"
         tier = "light" if auto else tier
         if tier not in TIERS:
@@ -121,6 +124,7 @@ class ResearchService:
             "interview_language": settings.report_language,
             "tier": tier,
             "summarize_model": None,
+            "tavily_cap": tavily_cap,
         }
         row = self._d.runs.create_external(
             brief_sha256=brief_sha256(text),

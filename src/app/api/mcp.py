@@ -55,6 +55,7 @@ def _guard(call: Callable[[], Any]) -> Any:
 def build_mcp(facade: Facade, key_of: Callable[[], ApiKey]) -> MCPServer[Any]:
     server: MCPServer[Any] = MCPServer("UltraDeepSearch")
     _clarification_tools(server, facade, key_of)
+    _approval_tools(server, facade, key_of)
     _research_tools(server, facade, key_of)
     _plan_tools(server, facade, key_of)
     _output_tools(server, facade, key_of)
@@ -96,17 +97,24 @@ def _clarification_tools(
         """Ask for another draft of the brief (background; poll get_session)."""
         return session(_guard(lambda: facade.revise_brief(key_of(), session_id, feedback)))
 
+
+def _approval_tools(server: MCPServer[Any], facade: Facade, key_of: Callable[[], ApiKey]) -> None:
     @server.tool()
     def approve_brief(
-        session_id: str, brief_sha256: str, tier: Tier, summarize_model: str | None = None
+        session_id: str,
+        brief_sha256: str,
+        tier: Tier,
+        summarize_model: str | None = None,
+        tavily_cap: int | None = None,
     ) -> dict[str, Any]:
         """Approve the brief with this hash and create its run. Needs a key with self_approve."""
-        return session(
+        return _plain(
+            SessionView,
             _guard(
                 lambda: facade.approve_brief(
-                    key_of(), session_id, brief_sha256, tier, summarize_model
+                    key_of(), session_id, brief_sha256, tier, summarize_model, tavily_cap
                 )
-            )
+            ),
         )
 
 
@@ -121,6 +129,7 @@ def _research_tools(server: MCPServer[Any], facade: Facade, key_of: Callable[[],
         template_id: str,
         language: str | None = None,
         response_format: str | None = None,
+        tavily_cap: int | None = None,
     ) -> dict[str, Any]:
         """Queue a run for a finished brief (a title and numbered research questions)."""
         return run(
@@ -132,6 +141,7 @@ def _research_tools(server: MCPServer[Any], facade: Facade, key_of: Callable[[],
                     template_id=template_id,
                     language=language,
                     response_format=response_format,
+                    tavily_cap=tavily_cap,
                 )
             )
         )

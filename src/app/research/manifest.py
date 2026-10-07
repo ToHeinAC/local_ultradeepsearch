@@ -30,6 +30,7 @@ class RunSettings(BaseModel):
     interview_language: str = Field(pattern=r"^[a-z]{2}$")
     tier: Literal["light", "full"]
     summarize_model: str | None
+    tavily_cap: int | None = Field(default=None, ge=0)  # None: the tier's credit cap
 
 
 def read_run_json(run_dir: Path) -> dict[str, Any]:

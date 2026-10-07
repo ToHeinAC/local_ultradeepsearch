@@ -1,6 +1,7 @@
 """M6 Step 7: the facade the routes and tools share. The approval rule (D4), the tier rule (D10),
 the Phase-1 job state and the admin operations."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -264,3 +265,34 @@ def test_the_config_hides_secrets(tmp_path: Path) -> None:
     assert "geheim-123" not in repr(shown)
     assert shown["tavily_api_key"] == "set"
     assert shown["model_reason"] == settings.model_reason
+
+
+# ---- PRD M7: the per-run Tavily cap (at most the tier's) ---------------------------------------
+
+
+def test_a_tavily_cap_above_the_tiers_is_refused_for_runs_and_approvals(api: ApiRig) -> None:
+    with pytest.raises(InvalidInput, match="tavily_cap"):
+        api.facade.create_run(
+            api.owner, RAW_BRIEF, tier="light", template_id=TEMPLATE, tavily_cap=61
+        )
+    view = at_decision(api)
+    with pytest.raises(InvalidInput, match="tavily_cap"):
+        api.facade.approve_brief(
+            api.owner, view.session_id, str(view.brief_sha256), "light", tavily_cap=61
+        )
+    assert api.facade.get_session(api.owner, view.session_id).waiting_for == "decision"
+
+
+def test_a_tavily_cap_within_the_tiers_reaches_the_run(api: ApiRig) -> None:
+    run_id = api.facade.create_run(
+        api.owner, RAW_BRIEF, tier="light", template_id=TEMPLATE, tavily_cap=60
+    ).run_id
+    row = api.research.runs.get_run(run_id)
+    assert row is not None
+    assert json.loads(str(row.settings_json))["tavily_cap"] == 60
+
+
+def test_a_session_started_over_the_api_records_its_key(api: ApiRig) -> None:
+    sid = api.facade.start_session(api.agent, QUESTION).session_id
+    api.jobs.wait_idle()
+    assert api.briefs.parts.sessions.get(sid).created_by == api.agent.key_id  # type: ignore[union-attr]

@@ -44,6 +44,7 @@ class SessionApproveIn(Body):
     brief_sha256: str
     tier: Tier
     summarize_model: str | None = None
+    tavily_cap: int | None = Field(default=None, ge=0)
 
 
 class ApprovedOut(BaseModel):
@@ -56,6 +57,7 @@ class RunCreateIn(Body):
     template_id: str
     language: str | None = None
     response_format: str | None = None
+    tavily_cap: int | None = Field(default=None, ge=0)
 
 
 class RunApproveIn(Body):

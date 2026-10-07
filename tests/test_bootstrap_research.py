@@ -246,3 +246,23 @@ def test_events_of_a_running_step_are_readable_before_the_step_ends(tmp_path: Pa
     assert started[:2] == ["0", "1"]
     finished = [e["data"]["step"] for e in events if e["type"] == "step_finished"]
     assert finished[:2] == ["0", "1"]
+
+
+@pytest.mark.parametrize(("cap", "expected"), [(None, 60), (5, 5), (0, 0)])
+def test_a_runs_tavily_cap_replaces_the_tiers_credit_cap(
+    tmp_path: Path, cap: int | None, expected: int
+) -> None:
+    rt = bootstrap.build_runtime(
+        settings(tmp_path),
+        MemoryEventSink(),
+        probe=FakeHost(),
+        admin=admin(),
+        transport=CallbackTransport(ResearchModels()),
+        env={},
+    )
+    service = bootstrap.build_research_service(rt, pandoc=FakePandoc())
+    run_id = service.create_external_run(
+        RAW_BRIEF, tier="light", template_id=TEMPLATE, language="de", tavily_cap=cap
+    ).run_id
+    ctx = service._d.contexts(run_id)  # pyright: ignore[reportPrivateUsage]
+    assert ctx.preparer.credit_cap == expected  # type: ignore[attr-defined]

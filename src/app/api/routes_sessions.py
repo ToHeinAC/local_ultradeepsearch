@@ -83,7 +83,7 @@ def _decision_routes(router: APIRouter, facade: Facade, auth: Callable[..., ApiK
         session_id: str, body: SessionApproveIn, key: ApiKey = Depends(auth)
     ) -> ApprovedOut:
         view = facade.approve_brief(
-            key, session_id, body.brief_sha256, body.tier, body.summarize_model
+            key, session_id, body.brief_sha256, body.tier, body.summarize_model, body.tavily_cap
         )
         return ApprovedOut(run_id=str(view.run_id))
 

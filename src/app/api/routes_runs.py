@@ -77,6 +77,7 @@ def runs_router(
             template_id=body.template_id,
             language=body.language,
             response_format=body.response_format,
+            tavily_cap=body.tavily_cap,
         )
 
     _watch_routes(router, facade, auth, sse_poll_s=sse_poll_s, sleep=sleep)

@@ -52,6 +52,7 @@ class Approve(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     tier: Literal["light", "full"]
     summarize_model: str | None = None
+    tavily_cap: int | None = Field(default=None, ge=0)
     at: AwareDatetime  # chosen by the service, so a resumed `finalize` archives under the same name
 
 

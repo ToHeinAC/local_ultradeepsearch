@@ -51,6 +51,7 @@ class SessionRow:
     approved_sha256: str | None
     archive_path: str | None
     run_id: str | None
+    created_by: str | None = None  # id of the API key that started it; None for the CLI
 
 
 @dataclass(frozen=True)
@@ -103,14 +104,14 @@ class SessionStore:
 
     # ---- sessions -------------------------------------------------------------------------
 
-    def create(self, interview_language: str) -> SessionRow:
+    def create(self, interview_language: str, created_by: str | None = None) -> SessionRow:
         session_id = f"s{secrets.token_hex(6)}"
         stamp = self._db.stamp()
         with self._db.tx():
             self._db.conn.execute(
                 "INSERT INTO sessions (session_id, created_at, updated_at, status, "
-                "interview_language) VALUES (?, ?, ?, 'interviewing', ?)",
-                (session_id, stamp, stamp, interview_language),
+                "interview_language, created_by) VALUES (?, ?, ?, 'interviewing', ?, ?)",
+                (session_id, stamp, stamp, interview_language, created_by),
             )
         session = self.get(session_id)
         assert session is not None

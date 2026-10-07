@@ -276,3 +276,10 @@ def test_health_and_config(api: ApiRig, client: TestClient) -> None:
     assert client.get("/v1/health").json() == {"api": "ok", "worker_lock": "free", "queued": 1}
     config = client.get("/v1/config").json()
     assert config["model_reason"]
+
+
+def test_the_tavily_cap_is_validated_by_the_schema_and_by_the_tier(client: TestClient) -> None:
+    body = {"brief": RAW_BRIEF, "tier": "light", "template_id": TEMPLATE}
+    assert client.post("/v1/runs", json={**body, "tavily_cap": -1}).status_code == 422
+    assert client.post("/v1/runs", json={**body, "tavily_cap": 61}).status_code == 422
+    assert client.post("/v1/runs", json={**body, "tavily_cap": 10}).status_code == 201
