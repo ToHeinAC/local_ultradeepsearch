@@ -1,6 +1,8 @@
 """The `udr` command line. Thin: it wires `bootstrap`, calls pure logic and prints."""
 
 import signal
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -313,6 +315,38 @@ def serve_cmd() -> None:
     settings = bootstrap.load_settings()
     typer.echo(f"API auf http://127.0.0.1:{settings.api_port}")
     server.serve(settings)
+
+
+GUI_APP = Path(__file__).resolve().parent / "gui" / "app.py"
+
+
+def gui_command(port: int) -> list[str]:
+    """Streamlit on loopback, headless, with no usage statistics sent anywhere."""
+    return [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(GUI_APP),
+        "--server.address",
+        "127.0.0.1",
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ]
+
+
+@app.command("gui")
+def gui_cmd() -> None:
+    """Startet die Oberfläche (Streamlit) auf 127.0.0.1; die API muss laufen."""
+    settings = bootstrap.load_settings()
+    if settings.gui_api_key is None:
+        raise _fail("UDR_GUI_API_KEY fehlt (Schlüssel mit `udr apikey create --self-approve`).", 1)
+    typer.echo(f"Oberfläche auf http://127.0.0.1:{settings.gui_port}")
+    subprocess.run(gui_command(settings.gui_port), check=False)
 
 
 apikey_app = typer.Typer(help="API-Schlüssel für REST und MCP.", no_args_is_help=True)

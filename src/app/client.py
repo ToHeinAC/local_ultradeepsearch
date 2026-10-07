@@ -10,12 +10,16 @@ from typing import Any, cast
 
 import httpx
 
-from app.config import is_loopback_url
+from app.config import Settings, is_loopback_url
 
 HttpFactory = Callable[[float], httpx.Client]  # timeout -> client; tests pass a MockTransport
 Json = dict[str, Any]
 Upload = tuple[str, bytes]  # (file name, content)
 TIMEOUT_S = 30.0
+
+
+class MissingApiKey(ValueError):
+    """`UDR_GUI_API_KEY` is not set."""
 
 
 class ApiDown(Exception):
@@ -55,6 +59,14 @@ class ApiClient:
         self._base = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {key}"}
         self._http = http
+
+    @classmethod
+    def from_env(cls) -> "ApiClient":
+        """The client the settings describe (`UDR_API_URL`, `UDR_GUI_API_KEY`)."""
+        settings = Settings()
+        if settings.gui_api_key is None:
+            raise MissingApiKey("UDR_GUI_API_KEY ist nicht gesetzt (siehe `udr apikey create`)")
+        return cls(settings.api_url, settings.gui_api_key.get_secret_value())
 
     def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:

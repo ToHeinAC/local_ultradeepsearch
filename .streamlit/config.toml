@@ -1,0 +1,9 @@
+# The GUI listens on loopback only and sends nothing to Streamlit (PRD M7). `udr gui` passes the
+# same values on its command line.
+[server]
+address = "127.0.0.1"
+port = 8540
+headless = true
+
+[browser]
+gatherUsageStats = false
